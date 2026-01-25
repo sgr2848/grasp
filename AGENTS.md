@@ -34,5 +34,5 @@ This project uses a **light theme**. Use the following color conventions:
 
 ## Database
 
-- Uses Neon PostgreSQL with custom migrations in `api/src/db/migrate.ts`
-- Run migrations with: `cd api && npx tsx src/db/migrate.ts`
+- Uses Neon PostgreSQL with custom migrations in `apps/api/src/db/migrate.ts`
+- Run migrations with: `cd apps/api && npx tsx src/db/migrate.ts`

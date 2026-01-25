@@ -365,7 +365,7 @@ Pre-recorded static audio files for persona messages:
 - Ready-to-record messages
 - Processing messages
 
-**15 audio files** in `/public/audio/personas/`:
+**15 audio files** in `/apps/web/public/audio/personas/`:
 ```
 coach-welcome.mp3, coach-ready.mp3, coach-processing.mp3
 professor-welcome.mp3, professor-ready.mp3, professor-processing.mp3
@@ -396,109 +396,109 @@ Conversation history is stored in `conversations` table.
 
 ```
 retension/
-├── api/                          # Express.js Backend
-│   └── src/
-│       ├── db/
-│       │   ├── client.ts         # Neon PostgreSQL connection
-│       │   ├── migrate.ts        # Database migrations
-│       │   └── queries.ts        # SQL query functions
-│       ├── middleware/
-│       │   └── auth.ts           # Clerk JWT verification
-│       ├── routes/
-│       │   ├── books.ts          # EPUB book import endpoints
-│       │   ├── chat.ts           # Follow-up conversation endpoints
-│       │   ├── evaluate.ts       # GPT-4o evaluation endpoint
-│       │   ├── knowledge.ts      # Knowledge graph & insights endpoints
-│       │   ├── sessions.ts       # Session CRUD endpoints
-│       │   ├── transcribe.ts     # Whisper transcription endpoint
-│       │   ├── tts.ts            # OpenAI TTS endpoint
-│       │   ├── user.ts           # User preferences endpoints
-│       │   └── workspaces.ts     # Workspace/subject CRUD
-│       ├── services/
-│       │   ├── knowledge.ts      # Knowledge graph updates on loop completion
-│       │   ├── chat.ts           # Chat AI logic
-│       │   ├── epub.ts           # EPUB parsing service
-│       │   ├── llm.ts            # OpenAI client + evaluation logic
-│       │   ├── personas.ts       # Persona configurations
-│       │   ├── tts.ts            # TTS generation logic
-│       │   └── whisper.ts        # Audio transcription logic
-│       ├── types/
-│       │   └── index.ts          # TypeScript type definitions
-│       └── index.ts              # Express app entry point
-│
-├── src/                          # React Frontend
-│   ├── components/
-│   │   ├── ui/                   # Reusable UI components
-│   │   │   ├── AnimatedScoreRing.tsx # Score with count-up animation
-│   │   │   ├── Badge.tsx
-│   │   │   ├── Button.tsx
-│   │   │   ├── Card.tsx
-│   │   │   ├── ScoreRing.tsx     # Static score circle
-│   │   │   ├── Spinner.tsx
-│   │   │   └── Switch.tsx
-│   │   ├── empty-states/         # Empty state components
-│   │   │   ├── EmptyHistory.tsx  # No history welcome
-│   │   │   └── EmptyLearn.tsx    # First-time learning guide
-│   │   ├── ChatPanel.tsx         # Follow-up conversation UI
-│   │   ├── Confetti.tsx          # Celebration animation
-│   │   ├── Layout.tsx            # App shell with navigation
-│   │   ├── LoopProgress.tsx      # Step progress indicator
-│   │   ├── LoopResultsPanel.tsx  # Results display with animation
-│   │   ├── RecordingEncouragement.tsx # Recording tips & encouragements
-│   │   ├── SocraticChat.tsx      # Fill gaps chat interface
-│   │   └── SpeechMetrics.tsx     # Filler words/pace display
-│   ├── context/
-│   │   ├── PreferencesContext.tsx # User preferences state
-│   │   └── TTSContext.tsx        # TTS state and controls
-│   ├── hooks/
-│   │   ├── useAuth.ts            # Clerk auth wrapper
-│   │   └── useRecorder.ts        # Audio recording hook
-│   ├── lib/
-│   │   ├── api.ts                # Backend API client
-│   │   ├── audio.ts              # Audio utilities
-│   │   ├── cn.ts                 # Class name utility
-│   │   ├── format.ts             # Formatting helpers
-│   │   ├── personas.ts           # Persona config (frontend)
-│   │   ├── speechAnalysis.ts     # Filler word detection
-│   │   └── tts.ts                # TTS controller
-│   ├── pages/
-│   │   ├── App.tsx               # Test page (quick retention test)
-│   │   ├── Book.tsx              # Book detail with chapters
-│   │   ├── Books.tsx             # Book list and EPUB upload
-│   │   ├── Dashboard.tsx         # Learning hub with stats
-│   │   ├── History.tsx           # Past sessions list
-│   │   ├── Home.tsx              # Landing page
-│   │   ├── Knowledge.tsx         # Knowledge graph & insights
-│   │   ├── Learn.tsx             # Feynman loop learning flow
-│   │   ├── Review.tsx            # Spaced repetition review
-│   │   ├── Settings.tsx          # User settings
-│   │   └── Workspaces.tsx        # Workspace management
-│   ├── App.tsx                   # Router configuration
-│   └── main.tsx                  # React entry point
-│
-├── public/
-│   └── audio/
-│       └── personas/             # Pre-recorded TTS audio (15 files)
-│
-├── scripts/
-│   └── generate-audio.ts         # Script to generate persona audio
-│
-├── package.json                  # Frontend dependencies
-├── vite.config.ts
-└── tsconfig.json
+├── apps/
+│   ├── api/                      # Express.js Backend
+│   │   └── src/
+│   │       ├── db/
+│   │       │   ├── client.ts     # Neon PostgreSQL connection
+│   │       │   ├── migrate.ts    # Database migrations
+│   │       │   └── queries.ts    # SQL query functions
+│   │       ├── middleware/
+│   │       │   └── auth.ts       # Clerk JWT verification
+│   │       ├── routes/
+│   │       │   ├── books.ts      # EPUB book import endpoints
+│   │       │   ├── chat.ts       # Follow-up conversation endpoints
+│   │       │   ├── evaluate.ts   # GPT-4o evaluation endpoint
+│   │       │   ├── knowledge.ts  # Knowledge graph & insights endpoints
+│   │       │   ├── sessions.ts   # Session CRUD endpoints
+│   │       │   ├── transcribe.ts # Whisper transcription endpoint
+│   │       │   ├── tts.ts        # OpenAI TTS endpoint
+│   │       │   ├── user.ts       # User preferences endpoints
+│   │       │   └── workspaces.ts # Workspace/subject CRUD
+│   │       ├── services/
+│   │       │   ├── knowledge.ts  # Knowledge graph updates on loop completion
+│   │       │   ├── chat.ts       # Chat AI logic
+│   │       │   ├── epub.ts       # EPUB parsing service
+│   │       │   ├── llm.ts        # OpenAI client + evaluation logic
+│   │       │   ├── personas.ts   # Persona configurations
+│   │       │   ├── tts.ts        # TTS generation logic
+│   │       │   └── whisper.ts    # Audio transcription logic
+│   │       ├── types/
+│   │       │   └── index.ts      # TypeScript type definitions
+│   │       └── index.ts          # Express app entry point
+│   └── web/                      # React Frontend
+│       ├── src/
+│       │   ├── components/
+│       │   │   ├── ui/           # Reusable UI components
+│       │   │   │   ├── AnimatedScoreRing.tsx # Score with count-up animation
+│       │   │   │   ├── Badge.tsx
+│       │   │   │   ├── Button.tsx
+│       │   │   │   ├── Card.tsx
+│       │   │   │   ├── ScoreRing.tsx # Static score circle
+│       │   │   │   ├── Spinner.tsx
+│       │   │   │   └── Switch.tsx
+│       │   │   ├── empty-states/ # Empty state components
+│       │   │   │   ├── EmptyHistory.tsx # No history welcome
+│       │   │   │   └── EmptyLearn.tsx   # First-time learning guide
+│       │   │   ├── ChatPanel.tsx # Follow-up conversation UI
+│       │   │   ├── Confetti.tsx  # Celebration animation
+│       │   │   ├── Layout.tsx    # App shell with navigation
+│       │   │   ├── LoopProgress.tsx # Step progress indicator
+│       │   │   ├── LoopResultsPanel.tsx # Results display with animation
+│       │   │   ├── RecordingEncouragement.tsx # Recording tips & encouragements
+│       │   │   ├── SocraticChat.tsx # Fill gaps chat interface
+│       │   │   └── SpeechMetrics.tsx # Filler words/pace display
+│       │   ├── context/
+│       │   │   ├── PreferencesContext.tsx # User preferences state
+│       │   │   └── TTSContext.tsx        # TTS state and controls
+│       │   ├── hooks/
+│       │   │   ├── useAuth.ts       # Clerk auth wrapper
+│       │   │   └── useRecorder.ts   # Audio recording hook
+│       │   ├── lib/
+│       │   │   ├── api.ts           # Backend API client
+│       │   │   ├── audio.ts         # Audio utilities
+│       │   │   ├── cn.ts            # Class name utility
+│       │   │   ├── format.ts        # Formatting helpers
+│       │   │   ├── personas.ts      # Persona config (frontend)
+│       │   │   ├── speechAnalysis.ts # Filler word detection
+│       │   │   └── tts.ts           # TTS controller
+│       │   ├── pages/
+│       │   │   ├── App.tsx          # Test page (quick retention test)
+│       │   │   ├── Book.tsx         # Book detail with chapters
+│       │   │   ├── Books.tsx        # Book list and EPUB upload
+│       │   │   ├── Dashboard.tsx    # Learning hub with stats
+│       │   │   ├── History.tsx      # Past sessions list
+│       │   │   ├── Home.tsx         # Landing page
+│       │   │   ├── Knowledge.tsx    # Knowledge graph & insights
+│       │   │   ├── Learn.tsx        # Feynman loop learning flow
+│       │   │   ├── Review.tsx       # Spaced repetition review
+│       │   │   ├── Settings.tsx     # User settings
+│       │   │   └── Workspaces.tsx   # Workspace management
+│       │   ├── App.tsx              # Router configuration
+│       │   └── main.tsx             # React entry point
+│       ├── public/
+│       │   └── audio/
+│       │       └── personas/        # Pre-recorded TTS audio (15 files)
+│       ├── scripts/
+│       │   └── generate-audio.ts    # Script to generate persona audio
+│       ├── index.html
+│       ├── package.json             # Frontend dependencies
+│       ├── vite.config.ts
+│       └── tsconfig.json
+└── package.json
 ```
 
 ---
 
 ## Environment Variables
 
-### Frontend (`.env`)
+### Frontend (`apps/web/.env`)
 ```
 VITE_CLERK_PUBLISHABLE_KEY=pk_...
 VITE_API_URL=http://localhost:3001/api
 ```
 
-### Backend (`api/.env`)
+### Backend (`apps/api/.env`)
 ```
 OPENAI_API_KEY=sk-...
 DATABASE_URL=postgresql://...
@@ -608,24 +608,24 @@ CLERK_SECRET_KEY=sk_...
 ### Development
 ```bash
 # Terminal 1: Frontend
-npm run dev
+cd apps/web && npm run dev
 
 # Terminal 2: Backend
-cd api && npm run dev
+cd apps/api && npm run dev
 ```
 
 ### Build
 ```bash
 # Frontend
-npm run build
+cd apps/web && npm run build
 
 # Backend
-cd api && npm run build
+cd apps/api && npm run build
 ```
 
 ### Generate Audio Files
 ```bash
-OPENAI_API_KEY=your_key npm run generate-audio
+cd apps/web && OPENAI_API_KEY=your_key npm run generate-audio
 ```
 
 ---
