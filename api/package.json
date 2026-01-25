@@ -1,0 +1,40 @@
+{
+  "name": "retention-trainer-api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.975.0",
+    "@aws-sdk/s3-request-presigner": "^3.975.0",
+    "@clerk/backend": "^1.27.0",
+    "@neondatabase/serverless": "^0.10.4",
+    "adm-zip": "^0.5.16",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "drizzle-orm": "^0.45.1",
+    "express": "^5.2.1",
+    "fast-xml-parser": "^5.3.3",
+    "multer": "^1.4.5-lts.2",
+    "openai": "^4.103.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/cors": "^2.8.18",
+    "@types/express": "^5.0.2",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^22.15.21",
+    "@types/ws": "^8.18.1",
+    "drizzle-kit": "^0.31.8",
+    "tsx": "^4.19.4",
+    "typescript": "^5.9.3"
+  }
+}
