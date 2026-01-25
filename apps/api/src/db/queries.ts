@@ -32,7 +32,22 @@ export const userQueries = {
   async upsert(id: string): Promise<User> {
     const existing = await this.findById(id)
     if (existing) return existing
-    return this.create(id)
+
+    // Create new user
+    const user = await this.create(id)
+
+    // Auto-create default workspace for new users
+    try {
+      await sql`
+        INSERT INTO workspaces (user_id, name, description)
+        VALUES (${id}, 'Personal', 'Your personal workspace')
+      `
+    } catch (err) {
+      // Ignore if workspace already exists
+      console.log('Default workspace creation skipped:', err)
+    }
+
+    return user
   },
 
   async updatePreferences(
