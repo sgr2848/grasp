@@ -5,8 +5,19 @@ import { authMiddleware } from '../middleware/auth.js'
 import { parseEpub } from '../services/epub.js'
 import { extractConcepts } from '../services/llm.js'
 import { syncLoopConcepts } from '../services/knowledge.js'
-import { uploadEpub, uploadCoverImage, isStorageConfigured, deleteBookFiles } from '../services/storage.js'
+import { uploadEpub, uploadCoverImage, isStorageConfigured, deleteBookFiles, getSignedDownloadUrl } from '../services/storage.js'
 import type { AuthRequest } from '../types/index.js'
+import type { Book } from '../types/index.js'
+
+// Helper to convert R2 keys to signed URLs for book covers
+async function enrichBookWithCoverUrl(book: Book): Promise<Book> {
+  if (book.coverUrl && !book.coverUrl.startsWith('http')) {
+    // It's an R2 key, convert to signed URL
+    const signedUrl = await getSignedDownloadUrl(book.coverUrl)
+    return { ...book, coverUrl: signedUrl }
+  }
+  return book
+}
 
 const router = Router()
 const upload = multer({ storage: multer.memoryStorage() })
@@ -33,6 +44,11 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req: AuthRe
 
     // Parse the EPUB with smart chunking
     const parsed = await parseEpub(req.file.buffer)
+
+    console.log(`[EPUB] Parsed: ${parsed.title}, chapters: ${parsed.chunks.length}, cover: ${parsed.cover ? 'found' : 'not found'}`)
+    if (parsed.cover) {
+      console.log(`[EPUB] Cover type: ${parsed.cover.contentType}, size: ${parsed.cover.data.length} bytes`)
+    }
 
     if (parsed.chunks.length === 0) {
       res.status(400).json({ error: 'No readable chapters found in EPUB' })
@@ -98,8 +114,11 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req: AuthRe
 
     const chapters = await chapterQueries.createMany(chunksToCreate)
 
+    // Convert cover key to signed URL for response
+    const bookWithUrl = await enrichBookWithCoverUrl(book)
+
     res.status(201).json({
-      ...book,
+      ...bookWithUrl,
       chapters: chapters.map(ch => ({
         id: ch.id,
         chapterNumber: ch.chapterNumber,
@@ -120,7 +139,11 @@ router.get('/', authMiddleware, async (req: AuthRequest, res) => {
   try {
     const subjectId = req.query.subjectId as string | undefined
     const books = await bookQueries.findByUserId(req.userId!, subjectId)
-    res.json(books)
+
+    // Convert R2 keys to signed URLs for covers
+    const booksWithUrls = await Promise.all(books.map(enrichBookWithCoverUrl))
+
+    res.json(booksWithUrls)
   } catch (error) {
     console.error('Books fetch error:', error)
     res.status(500).json({ error: 'Failed to fetch books' })
@@ -164,8 +187,11 @@ router.get('/:id', authMiddleware, async (req: AuthRequest, res) => {
       })
     )
 
+    // Convert cover key to signed URL
+    const bookWithUrl = await enrichBookWithCoverUrl(book)
+
     res.json({
-      ...book,
+      ...bookWithUrl,
       chapters: chaptersWithProgress
     })
   } catch (error) {
