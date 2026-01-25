@@ -641,6 +641,16 @@ export default function Learn() {
         >
           {/* Left side - Input form (sticky) */}
           <Card className={cn("p-6 sm:p-8", wordCount >= 10 && "lg:sticky lg:top-4 lg:self-start")}>
+            {/* Title input - shown when text is pasted */}
+            {wordCount >= 10 && (
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Title (optional)"
+                className="mb-4 h-10 w-full border-0 border-b border-neutral-200 bg-transparent px-0 text-lg font-medium text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-neutral-400 transition-colors animate-in fade-in slide-in-from-top-2 duration-300"
+              />
+            )}
             <textarea
               value={sourceText}
               onChange={(e) => setSourceText(e.target.value)}
