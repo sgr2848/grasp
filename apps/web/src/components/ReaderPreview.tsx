@@ -1,7 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, type ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/cn'
+
+type ChildrenProps = { children?: ReactNode }
+type AnchorProps = { href?: string; children?: ReactNode }
+type CodeProps = { children?: ReactNode; className?: string }
 
 const MARKDOWN_DETECTION_PATTERN =
   /(^|\n)\s{0,3}#{1,6}\s+|(^|\n)\s{0,3}(-|\*|\+)\s+|(^|\n)\s{0,3}\d+\.\s+|```|`[^`]+`|\[[^\]]+\]\([^)]+\)|(^|\n)\s{0,3}>\s+/m
@@ -65,37 +69,37 @@ export function ReaderPreview({ text, title, className }: ReaderPreviewProps) {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                h1: ({ children }) => (
+                h1: ({ children }: ChildrenProps) => (
                   <h1 className="mb-4 text-2xl font-bold text-neutral-900">{children}</h1>
                 ),
-                h2: ({ children }) => (
+                h2: ({ children }: ChildrenProps) => (
                   <h2 className="mb-3 text-xl font-bold text-neutral-900">{children}</h2>
                 ),
-                h3: ({ children }) => (
+                h3: ({ children }: ChildrenProps) => (
                   <h3 className="mb-2 text-lg font-semibold text-neutral-900">{children}</h3>
                 ),
-                p: ({ children }) => (
+                p: ({ children }: ChildrenProps) => (
                   <p className="mb-5 text-base leading-relaxed text-neutral-700 last:mb-0">
                     {children}
                   </p>
                 ),
-                ul: ({ children }) => (
+                ul: ({ children }: ChildrenProps) => (
                   <ul className="mb-5 list-disc space-y-1.5 pl-5 text-base text-neutral-700">
                     {children}
                   </ul>
                 ),
-                ol: ({ children }) => (
+                ol: ({ children }: ChildrenProps) => (
                   <ol className="mb-5 list-decimal space-y-1.5 pl-5 text-base text-neutral-700">
                     {children}
                   </ol>
                 ),
-                li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-                blockquote: ({ children }) => (
+                li: ({ children }: ChildrenProps) => <li className="leading-relaxed">{children}</li>,
+                blockquote: ({ children }: ChildrenProps) => (
                   <blockquote className="mb-5 border-l-2 border-neutral-200 pl-4 text-base italic text-neutral-600">
                     {children}
                   </blockquote>
                 ),
-                a: ({ href, children }) => (
+                a: ({ href, children }: AnchorProps) => (
                   <a
                     href={href}
                     target="_blank"
@@ -105,7 +109,7 @@ export function ReaderPreview({ text, title, className }: ReaderPreviewProps) {
                     {children}
                   </a>
                 ),
-                code: ({ children, className }) => {
+                code: ({ children, className }: CodeProps) => {
                   const isBlock = className?.includes('language-')
                   return isBlock ? (
                     <code className="font-mono text-sm text-neutral-800">{children}</code>
@@ -115,7 +119,7 @@ export function ReaderPreview({ text, title, className }: ReaderPreviewProps) {
                     </code>
                   )
                 },
-                pre: ({ children }) => (
+                pre: ({ children }: ChildrenProps) => (
                   <pre className="mb-5 overflow-x-auto rounded-lg border border-neutral-200 bg-neutral-50 p-4 text-sm text-neutral-800">
                     {children}
                   </pre>
