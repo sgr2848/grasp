@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { SignInButton, useAuth as useClerkAuth } from '@clerk/clerk-react'
 import { useRecorder } from '@/hooks/useRecorder'
+import { useIsFirstTimeUser } from '@/hooks/useIsFirstTimeUser'
 import { usePreferences } from '@/context/PreferencesContext'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { useTTS } from '@/context/TTSContext'
@@ -41,11 +42,12 @@ import { LoopProgress } from '@/components/LoopProgress'
 import { SocraticChat } from '@/components/SocraticChat'
 import { SimplifyChallenge } from '@/components/SimplifyChallenge'
 import { LoopResultsPanel } from '@/components/LoopResultsPanel'
-import { ReviewDashboard } from '@/components/ReviewDashboard'
-import { InProgressLoops } from '@/components/InProgressLoops'
+// ReviewDashboard removed - loops now shown in drawer
+import { useInProgressLoops, InProgressLoopsDrawer } from '@/components/InProgressLoops'
 import { RecordingEncouragement } from '@/components/RecordingEncouragement'
 import { Confetti } from '@/components/Confetti'
 import { AnimatedScoreRing } from '@/components/ui/AnimatedScoreRing'
+import { ReaderPreview } from '@/components/ReaderPreview'
 
 type UIPhase = 'input' | 'loading' | LoopPhase | 'error'
 
@@ -72,6 +74,7 @@ export default function Learn() {
   const { selectedPersona } = usePreferences()
   const { currentSubject } = useWorkspace()
   const { enabled: ttsEnabled, speak, speakSequence, stop: stopSpeaking } = useTTS()
+  const { isFirstTimeUser, markFirstLoopComplete } = useIsFirstTimeUser()
 
   const [state, setState] = useState<LoopState>({
     phase: loopId ? 'loading' : 'input',
@@ -96,6 +99,10 @@ export default function Learn() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [usageLimitReached, setUsageLimitReached] = useState<UsageStats | null>(null)
+  const [loopsDrawerOpen, setLoopsDrawerOpen] = useState(false)
+
+  // Fetch in-progress loops for the drawer
+  const { loops: inProgressLoops, loading: loopsLoading, count: loopsCount } = useInProgressLoops()
 
   const { state: recorderState, duration, startRecording, stopRecording, reset: resetRecorder, error: recorderError } =
     useRecorder()
@@ -191,6 +198,13 @@ export default function Learn() {
     hasWelcomedRef.current = true
     void speak("Ready to learn? Paste what you want to remember, then explain it back in your own words.")
   }, [state.phase, speak, ttsEnabled])
+
+  // Mark first loop complete when user completes a loop
+  useEffect(() => {
+    if (state.phase === 'complete') {
+      markFirstLoopComplete()
+    }
+  }, [state.phase, markFirstLoopComplete])
 
   // Create new loop
   const handleSourceSubmit = useCallback(async () => {
@@ -537,20 +551,50 @@ export default function Learn() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Learn</h1>
-          <Badge variant="info">{personaConfig[selectedPersona].name}</Badge>
-          {state.loop && <Badge variant="neutral">Loop #{state.loop.id.slice(0, 8)}</Badge>}
+      {/* Header - different for first-time vs returning users */}
+      {isFirstTimeUser && state.phase === 'input' ? (
+        <div className="text-center py-4 animate-in fade-in slide-in-from-bottom-2 duration-400">
+          <h1 className="text-3xl font-bold tracking-tight text-neutral-900">
+            What did you learn today?
+          </h1>
+          <p className="mt-2 text-neutral-500 max-w-md mx-auto">
+            Paste an article, meeting notes, or anything you just read. We'll see how much stuck.
+          </p>
         </div>
-        <p className="text-sm text-neutral-500">
-          The Feynman method: explain to learn. Master concepts through iterative explanation.
-        </p>
-      </div>
+      ) : (
+        <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2 duration-400">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl font-bold tracking-tight text-neutral-900">Learn</h1>
+              <Badge variant="info">{personaConfig[selectedPersona].name}</Badge>
+              {state.loop && <Badge variant="neutral">Loop #{state.loop.id.slice(0, 8)}</Badge>}
+            </div>
+            {/* In-progress loops button */}
+            {state.phase === 'input' && loopsCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setLoopsDrawerOpen(true)}
+                className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-700 shadow-sm transition hover:bg-neutral-50 hover:border-neutral-300 focus:outline-none focus:ring-2 focus:ring-neutral-900/20"
+              >
+                <svg className="h-4 w-4 text-neutral-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Continue</span>
+                <Badge variant="warning" className="ml-1">{loopsCount}</Badge>
+              </button>
+            )}
+          </div>
+          <p className="text-sm text-neutral-500">
+            Explain to remember. The best way to learn is to teach it back.
+          </p>
+        </div>
+      )}
 
       {/* Loop Progress */}
       {state.loop && state.phase !== 'input' && state.phase !== 'loading' && state.phase !== 'error' && (
-        <LoopProgress phase={state.phase as LoopPhase} attempts={state.loop.attempts} />
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-400">
+          <LoopProgress phase={state.phase as LoopPhase} attempts={state.loop.attempts} />
+        </div>
       )}
 
       {/* Auth Gate */}
@@ -570,7 +614,7 @@ export default function Learn() {
 
       {/* Loading State */}
       {state.phase === 'loading' && (
-        <Card className="p-10">
+        <Card className="p-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex items-center justify-center gap-3 text-sm text-neutral-600">
             <Spinner size="lg" />
             Loading your learning session...
@@ -578,20 +622,193 @@ export default function Learn() {
         </Card>
       )}
 
-      {/* Due Reviews */}
-      {state.phase === 'input' && isSignedIn && (
-        <ReviewDashboard />
+      {/* In Progress Loops Drawer */}
+      <InProgressLoopsDrawer
+        isOpen={loopsDrawerOpen}
+        onClose={() => setLoopsDrawerOpen(false)}
+        loops={inProgressLoops}
+        loading={loopsLoading}
+      />
+
+      {/* Input Phase - Simplified for first-time users */}
+      {state.phase === 'input' && isSignedIn && isFirstTimeUser && (
+        <div
+          className={cn(
+            'grid gap-5 transition-all duration-700 ease-out animate-in fade-in slide-in-from-bottom-4 duration-500',
+            wordCount >= 10
+              ? 'lg:grid-cols-[30%_1fr]'
+              : 'lg:grid-cols-1 max-w-2xl mx-auto'
+          )}
+        >
+          {/* Left side - Input form (sticky) */}
+          <Card className={cn("p-6 sm:p-8", wordCount >= 10 && "lg:sticky lg:top-4 lg:self-start")}>
+            <textarea
+              value={sourceText}
+              onChange={(e) => setSourceText(e.target.value)}
+              placeholder="Paste any text here - an article, meeting notes, book chapter, podcast transcript..."
+              className={cn(
+                'w-full resize-none border-0 bg-neutral-50 p-4 text-base text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/20 rounded-lg transition-all duration-500',
+                wordCount >= 10 ? 'h-32 sm:h-40' : 'h-48 sm:h-64'
+              )}
+              autoFocus
+            />
+
+            {/* Optional controls - shown after text is pasted with animation */}
+            {wordCount >= 10 && (
+              <div
+                className="mt-6 pt-6 border-t border-neutral-100 animate-in fade-in slide-in-from-bottom-4 duration-500"
+                style={{ animationFillMode: 'both' }}
+              >
+                {/* Word count badge */}
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-sm text-neutral-500">Ready to start</span>
+                  <Badge variant="neutral" className="animate-in zoom-in duration-300 delay-150">{wordCount} words</Badge>
+                </div>
+
+                {/* Content type selection */}
+                <div className="animate-in fade-in slide-in-from-bottom-2 duration-400 delay-100">
+                  <div className="text-xs font-medium text-neutral-500 mb-3">What type of content is this?</div>
+                  <div className="flex flex-wrap gap-2 stagger-children">
+                    {([
+                      { id: 'article', label: 'Article', icon: '📄' },
+                      { id: 'meeting', label: 'Meeting', icon: '👥' },
+                      { id: 'podcast', label: 'Podcast', icon: '🎙️' },
+                      { id: 'video', label: 'Video', icon: '🎬' },
+                      { id: 'book', label: 'Book', icon: '📚' },
+                      { id: 'lecture', label: 'Lecture', icon: '🎓' },
+                    ] as const).map((type) => (
+                      <button
+                        key={type.id}
+                        type="button"
+                        onClick={() => setSourceType(type.id)}
+                        className={cn(
+                          'animate-in fade-in zoom-in duration-300',
+                          'flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border transition-all duration-200',
+                          'hover:scale-[1.02] active:scale-[0.98]',
+                          sourceType === type.id
+                            ? 'border-neutral-900 bg-neutral-900 text-white shadow-md'
+                            : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300'
+                        )}
+                      >
+                        <span className="text-base">{type.icon}</span>
+                        <span>{type.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Precision level selection */}
+                <div className="mt-5 animate-in fade-in slide-in-from-bottom-2 duration-400 delay-300">
+                  <div className="text-xs font-medium text-neutral-500 mb-3">How detailed should the check be?</div>
+                  <div className="flex flex-wrap gap-2 stagger-children">
+                    {([
+                      { id: 'essential', label: 'Main ideas', desc: 'Core concepts only' },
+                      { id: 'balanced', label: 'Balanced', desc: 'Recommended' },
+                      { id: 'precise', label: 'Every detail', desc: 'Comprehensive' },
+                    ] as const).map((level) => (
+                      <button
+                        key={level.id}
+                        type="button"
+                        onClick={() => setPrecision(level.id)}
+                        className={cn(
+                          'animate-in fade-in zoom-in duration-300',
+                          'flex flex-col items-start px-4 py-2.5 text-sm rounded-lg border transition-all duration-200',
+                          'hover:scale-[1.02] active:scale-[0.98]',
+                          precision === level.id
+                            ? 'border-neutral-900 bg-neutral-900 text-white shadow-md'
+                            : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50 hover:border-neutral-300'
+                        )}
+                      >
+                        <span className="font-medium">{level.label}</span>
+                        <span className={cn(
+                          'text-xs mt-0.5',
+                          precision === level.id ? 'text-neutral-300' : 'text-neutral-400'
+                        )}>{level.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className={cn(
+              "mt-6 flex flex-col gap-3",
+              wordCount >= 10 && "animate-in fade-in slide-in-from-bottom-2 duration-400 delay-200"
+            )}>
+              <Button
+                size="lg"
+                onClick={handleSourceSubmit}
+                disabled={!canStart || isProcessing}
+                className={cn(
+                  "w-full sm:w-auto sm:px-12 transition-all duration-300",
+                  wordCount >= 10 && "shadow-lg hover:shadow-xl"
+                )}
+              >
+                {isProcessing ? (
+                  <>
+                    <Spinner className="border-white/30 border-t-white" />
+                    Preparing...
+                  </>
+                ) : wordCount < 10 ? (
+                  `Paste at least ${10 - wordCount} more words`
+                ) : (
+                  <>
+                    <svg className="h-5 w-5 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Start Learning
+                  </>
+                )}
+              </Button>
+
+              {wordCount < 10 && (
+                <div className="flex items-center justify-center gap-4 text-sm text-neutral-500 animate-fade-in">
+                  <span className="flex items-center gap-1.5">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                    Record yourself explaining
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    See what you remembered
+                  </span>
+                </div>
+              )}
+            </div>
+          </Card>
+
+          {/* Right side - Reader preview (only visible when text is pasted) */}
+          {wordCount >= 10 && (
+            <Card className="overflow-hidden animate-in fade-in slide-in-from-right-8 duration-700 hidden lg:block">
+              <div className="flex items-center justify-between border-b border-neutral-100 bg-neutral-50 px-5 py-4">
+                <div>
+                  <div className="text-sm font-medium text-neutral-900">Preview</div>
+                  <p className="text-xs text-neutral-500">How your content will appear</p>
+                </div>
+                <Badge variant="neutral">{wordCount} words</Badge>
+              </div>
+              <ReaderPreview text={sourceText} title={title} className="h-125 bg-white" />
+            </Card>
+          )}
+        </div>
       )}
 
-      {/* In Progress Loops */}
-      {state.phase === 'input' && isSignedIn && (
-        <InProgressLoops />
-      )}
-
-      {/* Input Phase */}
-      {state.phase === 'input' && isSignedIn && (
-        <div className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr]">
-          <Card className="p-6">
+      {/* Input Phase - Full version for returning users */}
+      {state.phase === 'input' && isSignedIn && !isFirstTimeUser && (
+        <div
+          className={cn(
+            'grid gap-5 transition-all duration-700 ease-out animate-in fade-in slide-in-from-bottom-4 duration-500',
+            wordCount >= 10
+              ? 'lg:grid-cols-[30%_1fr]'
+              : 'lg:grid-cols-1 max-w-2xl mx-auto'
+          )}
+        >
+          {/* Left side - Input form (sticky) */}
+          <Card className={cn("p-6", wordCount >= 10 && "lg:sticky lg:top-4 lg:self-start")}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <div className="text-sm font-medium text-neutral-900">What do you want to learn?</div>
@@ -613,13 +830,99 @@ export default function Learn() {
                 onChange={(e) => setSourceText(e.target.value)}
                 placeholder="Paste your text here..."
                 className={cn(
-                  'h-64 w-full resize-none border bg-white p-4 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/20',
-                  isLongText ? 'border-amber-400' : 'border-neutral-200'
+                  'w-full resize-none border bg-white p-4 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/20 transition-all duration-500',
+                  isLongText ? 'border-amber-400' : 'border-neutral-200',
+                  wordCount >= 10 ? 'h-32' : 'h-64'
                 )}
               />
             </div>
 
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            {/* Options - shown after text is pasted */}
+            {wordCount >= 10 && (
+              <div className="mt-5 space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div>
+                  <div className="text-sm font-medium text-neutral-900">Source type</div>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {([
+                      { id: 'article', label: 'Article', icon: '📄' },
+                      { id: 'meeting', label: 'Meeting', icon: '👥' },
+                      { id: 'podcast', label: 'Podcast', icon: '🎙️' },
+                      { id: 'video', label: 'Video', icon: '🎬' },
+                      { id: 'book', label: 'Book', icon: '📚' },
+                      { id: 'lecture', label: 'Lecture', icon: '🎓' },
+                    ] as const).map((type) => (
+                      <button
+                        key={type.id}
+                        type="button"
+                        onClick={() => setSourceType(type.id)}
+                        className={cn(
+                          'flex items-center gap-2 border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-neutral-900/20',
+                          sourceType === type.id
+                            ? 'border-neutral-900 bg-neutral-900 text-white'
+                            : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
+                        )}
+                      >
+                        <span>{type.icon}</span>
+                        <span>{type.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border-t border-neutral-100 pt-5">
+                  <div className="text-sm font-medium text-neutral-900">Detail level</div>
+                  <p className="mt-1 text-xs text-neutral-500">How strictly should we evaluate your explanation?</p>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    {([
+                      { id: 'essential', label: 'Essential', desc: 'Core concepts only' },
+                      { id: 'balanced', label: 'Balanced', desc: 'Standard (Recommended)' },
+                      { id: 'precise', label: 'Precise', desc: 'Every detail matters' },
+                    ] as const).map((level) => (
+                      <button
+                        key={level.id}
+                        type="button"
+                        onClick={() => setPrecision(level.id)}
+                        className={cn(
+                          'flex flex-col border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-neutral-900/20',
+                          precision === level.id
+                            ? 'border-neutral-900 bg-neutral-900 text-white'
+                            : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
+                        )}
+                      >
+                        <span className="font-medium">{level.label}</span>
+                        <span className={cn(
+                          'text-xs',
+                          precision === level.id ? 'text-neutral-300' : 'text-neutral-400'
+                        )}>{level.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {subjects.length > 0 && (
+                  <div className="border-t border-neutral-100 pt-5">
+                    <div className="text-sm font-medium text-neutral-900">Subject (optional)</div>
+                    <select
+                      value={selectedSubjectId ?? ''}
+                      onChange={(e) => setSelectedSubjectId(e.target.value || null)}
+                      className="mt-3 h-10 w-full border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-900/20"
+                    >
+                      <option value="">No subject</option>
+                      {subjects.map((subject) => (
+                        <option key={subject.id} value={subject.id}>
+                          {subject.workspaceName} / {subject.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className={cn(
+              "mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+              wordCount >= 10 && "animate-in fade-in slide-in-from-bottom-2 duration-400"
+            )}>
               <Button size="lg" onClick={handleSourceSubmit} disabled={!canStart || isProcessing}>
                 {isProcessing ? (
                   <>
@@ -636,110 +939,25 @@ export default function Learn() {
             )}
           </Card>
 
-          <Card className="p-6">
-            <div className="space-y-5">
-              <div>
-                <div className="text-sm font-medium text-neutral-900">Source type</div>
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  {([
-                    { id: 'article', label: 'Article', icon: '📄' },
-                    { id: 'meeting', label: 'Meeting', icon: '👥' },
-                    { id: 'podcast', label: 'Podcast', icon: '🎙️' },
-                    { id: 'video', label: 'Video', icon: '🎬' },
-                    { id: 'book', label: 'Book', icon: '📚' },
-                    { id: 'lecture', label: 'Lecture', icon: '🎓' },
-                  ] as const).map((type) => (
-                    <button
-                      key={type.id}
-                      type="button"
-                      onClick={() => setSourceType(type.id)}
-                      className={cn(
-                        'flex items-center gap-2 border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-neutral-900/20',
-                        sourceType === type.id
-                          ? 'border-neutral-900 bg-neutral-900 text-white'
-                          : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
-                      )}
-                    >
-                      <span>{type.icon}</span>
-                      <span>{type.label}</span>
-                    </button>
-                  ))}
+          {/* Right side - Reader preview (only visible when text is pasted) */}
+          {wordCount >= 10 && (
+            <Card className="overflow-hidden animate-in fade-in slide-in-from-right-8 duration-700 hidden lg:block">
+              <div className="flex items-center justify-between border-b border-neutral-100 bg-neutral-50 px-5 py-4">
+                <div>
+                  <div className="text-sm font-medium text-neutral-900">Preview</div>
+                  <p className="text-xs text-neutral-500">How your content will appear</p>
                 </div>
+                <Badge variant="neutral">{wordCount} words</Badge>
               </div>
-
-              <div className="border-t border-neutral-100 pt-5">
-                <div className="text-sm font-medium text-neutral-900">Detail level</div>
-                <p className="mt-1 text-xs text-neutral-500">How strictly should we evaluate your explanation?</p>
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {([
-                    { id: 'essential', label: 'Essential', desc: 'Core concepts only' },
-                    { id: 'balanced', label: 'Balanced', desc: 'Standard (Recommended)' },
-                    { id: 'precise', label: 'Precise', desc: 'Every detail matters' },
-                  ] as const).map((level) => (
-                    <button
-                      key={level.id}
-                      type="button"
-                      onClick={() => setPrecision(level.id)}
-                      className={cn(
-                        'flex flex-col border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-neutral-900/20',
-                        precision === level.id
-                          ? 'border-neutral-900 bg-neutral-900 text-white'
-                          : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
-                      )}
-                    >
-                      <span className="font-medium">{level.label}</span>
-                      <span className={cn(
-                        'text-xs',
-                        precision === level.id ? 'text-neutral-300' : 'text-neutral-400'
-                      )}>{level.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {subjects.length > 0 && (
-                <div className="border-t border-neutral-100 pt-5">
-                  <div className="text-sm font-medium text-neutral-900">Subject (optional)</div>
-                  <select
-                    value={selectedSubjectId ?? ''}
-                    onChange={(e) => setSelectedSubjectId(e.target.value || null)}
-                    className="mt-3 h-10 w-full border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-900/20"
-                  >
-                    <option value="">No subject</option>
-                    {subjects.map((subject) => (
-                      <option key={subject.id} value={subject.id}>
-                        {subject.workspaceName} / {subject.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="border-t border-neutral-100 pt-5">
-                <div className="text-sm font-medium text-neutral-900">The Feynman Loop</div>
-                <ol className="mt-3 space-y-2 text-sm text-neutral-500">
-                  <li>
-                    <span className="font-medium text-neutral-700">1.</span> First attempt - explain from memory
-                  </li>
-                  <li>
-                    <span className="font-medium text-neutral-700">2.</span> Fill gaps - guided Q&A on what you missed
-                  </li>
-                  <li>
-                    <span className="font-medium text-neutral-700">3.</span> Second attempt - show your improvement
-                  </li>
-                  <li>
-                    <span className="font-medium text-neutral-700">4.</span> Simplify - explain like teaching a child
-                  </li>
-                </ol>
-              </div>
-            </div>
-          </Card>
+              <ReaderPreview text={sourceText} title={title} className="h-125 bg-white" />
+            </Card>
+          )}
         </div>
       )}
 
       {/* Prior Knowledge Assessment Phase */}
       {state.phase === 'prior_knowledge' && state.loop && (
-        <Card className="p-6">
+        <Card className="p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -815,7 +1033,7 @@ export default function Learn() {
                   </ul>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-4 hidden lg:block">
                   <div className="text-xs font-medium text-neutral-500">Controls</div>
                   <div className="mt-3 flex flex-col gap-2">
                     {recorderState !== 'recording' ? (
@@ -859,12 +1077,53 @@ export default function Learn() {
               </div>
             </div>
           </div>
+
+          {/* Mobile controls */}
+          <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-neutral-200 bg-white/95 backdrop-blur lg:hidden">
+            <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 pb-[env(safe-area-inset-bottom)] pt-3">
+              {recorderState !== 'recording' ? (
+                <Button
+                  size="lg"
+                  onClick={() => void startRecording()}
+                  disabled={!isSignedIn || recorderState === 'requesting' || isProcessing}
+                >
+                  {recorderState === 'requesting' ? (
+                    <>
+                      <Spinner className="border-white/30 border-t-white" />
+                      Starting...
+                    </>
+                  ) : (
+                    'Start recording'
+                  )}
+                </Button>
+              ) : (
+                <Button size="lg" variant="primary" onClick={() => void handleStopRecording()} disabled={isProcessing}>
+                  {isProcessing ? (
+                    <>
+                      <Spinner className="border-white/30 border-t-white" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    'Done sharing'
+                  )}
+                </Button>
+              )}
+              <Button
+                size="lg"
+                variant="ghost"
+                onClick={() => void handleSkipPriorKnowledge()}
+                disabled={isProcessing || recorderState === 'recording'}
+              >
+                Skip - I don't know anything yet
+              </Button>
+            </div>
+          </div>
         </Card>
       )}
 
       {/* Recording Phase (First or Second Attempt) */}
       {(state.phase === 'first_attempt' || state.phase === 'second_attempt') && state.loop && (
-        <Card className="p-6">
+        <Card className="p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -945,7 +1204,7 @@ export default function Learn() {
                   </Card>
                 )}
 
-                <Card className="p-4">
+                <Card className="p-4 hidden lg:block">
                   <div className="text-xs font-medium text-neutral-500">Controls</div>
                   <div className="mt-3 flex flex-col gap-2">
                     {recorderState !== 'recording' ? (
@@ -980,52 +1239,91 @@ export default function Learn() {
               </div>
             </div>
           </div>
+
+          {/* Mobile controls */}
+          <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-neutral-200 bg-white/95 backdrop-blur lg:hidden">
+            <div className="mx-auto flex max-w-5xl flex-col gap-2 px-4 pb-[env(safe-area-inset-bottom)] pt-3">
+              {recorderState !== 'recording' ? (
+                <Button
+                  size="lg"
+                  onClick={() => void startRecording()}
+                  disabled={!isSignedIn || recorderState === 'requesting' || isProcessing}
+                >
+                  {recorderState === 'requesting' ? (
+                    <>
+                      <Spinner className="border-white/30 border-t-white" />
+                      Starting...
+                    </>
+                  ) : (
+                    'Start recording'
+                  )}
+                </Button>
+              ) : (
+                <Button size="lg" variant="danger" onClick={() => void handleStopRecording()} disabled={isProcessing}>
+                  {isProcessing ? (
+                    <>
+                      <Spinner className="border-white/30 border-t-white" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Stop & score'
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
         </Card>
       )}
 
       {/* Results Phases */}
       {(state.phase === 'first_results' || state.phase === 'second_results' || state.phase === 'simplify_results') &&
         state.currentAttempt && (
-          <LoopResultsPanel
-            attempt={state.currentAttempt}
-            previousAttempt={previousAttempt}
-            phase={state.phase}
-            speechAnalysis={state.speechAnalysis}
-            onContinue={handleContinue}
-            onRetry={handleRetry}
-            onTestYourself={handleTestYourself}
-          />
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <LoopResultsPanel
+              attempt={state.currentAttempt}
+              previousAttempt={previousAttempt}
+              phase={state.phase}
+              speechAnalysis={state.speechAnalysis}
+              onContinue={handleContinue}
+              onRetry={handleRetry}
+              onTestYourself={handleTestYourself}
+            />
+          </div>
         )}
 
       {/* Learning Phase (Socratic Dialogue) */}
       {state.phase === 'learning' && state.socraticSession && state.loop && (
-        <SocraticChat
-          session={state.socraticSession}
-          sourceText={state.loop.sourceText}
-          onSendMessage={handleSocraticMessage}
-          onSkip={handleSkipToSecondAttempt}
-          isLoading={isProcessing}
-        />
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <SocraticChat
+            session={state.socraticSession}
+            sourceText={state.loop.sourceText}
+            onSendMessage={handleSocraticMessage}
+            onSkip={handleSkipToSecondAttempt}
+            isLoading={isProcessing}
+          />
+        </div>
       )}
 
       {/* Simplify Challenge Phase */}
       {state.phase === 'simplify' && state.loop && (
-        <SimplifyChallenge
-          sourceText={state.loop.sourceText}
-          recorderState={recorderState}
-          duration={duration}
-          isProcessing={isProcessing}
-          recorderError={recorderError}
-          onStart={() => void startRecording()}
-          onStop={() => void handleStopRecording()}
-        />
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <SimplifyChallenge
+            sourceText={state.loop.sourceText}
+            recorderState={recorderState}
+            duration={duration}
+            isProcessing={isProcessing}
+            recorderError={recorderError}
+            onStart={() => void startRecording()}
+            onStop={() => void handleStopRecording()}
+          />
+        </div>
       )}
 
       {/* Complete Phase */}
       {state.phase === 'complete' && (
         <>
           <Confetti active={state.phase === 'complete'} duration={4000} />
-          <Card className="p-10 text-center">
+          <Card className="p-10 text-center animate-in fade-in zoom-in duration-500">
             <div className="mx-auto max-w-md">
               {/* Animated final score */}
               {state.loop && state.loop.attempts.length > 0 && (
@@ -1042,7 +1340,7 @@ export default function Learn() {
 
               <h2 className="text-2xl font-bold mb-2 text-neutral-900">Mastered!</h2>
               <p className="text-neutral-600 mb-6">
-                Excellent work completing the full Feynman loop. We'll check back in a few days to make sure it stuck.
+                Excellent work! We'll check back in a few days to make sure it stuck.
               </p>
 
               {state.loop && state.loop.attempts.length > 1 && (

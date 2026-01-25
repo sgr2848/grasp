@@ -7,6 +7,7 @@ import { createSubject } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { Switch } from '@/components/ui/Switch'
 import { Spinner } from '@/components/ui/Spinner'
+import { FirstTimeUserRedirect } from '@/components/FirstTimeUserRedirect'
 import { cn } from '@/lib/cn'
 
 const mainNavItems = [
@@ -75,6 +76,9 @@ const mainNavItems = [
     ),
   },
 ]
+
+const mobileNavPaths = ['/dashboard', '/learn', '/history', '/knowledge', '/settings']
+const mobileNavItems = mainNavItems.filter((item) => mobileNavPaths.includes(item.path))
 
 export default function Layout() {
   const navigate = useNavigate()
@@ -171,6 +175,9 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900">
+      {/* Redirect first-time users to /learn */}
+      <FirstTimeUserRedirect />
+
       {/* Mobile sidebar backdrop */}
       {sidebarOpen && (
         <div
@@ -536,11 +543,32 @@ export default function Layout() {
         </header>
 
         {/* Page content */}
-        <main className="p-6 lg:p-8">
+        <main className="p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8">
           <div className="mx-auto max-w-5xl">
             <Outlet />
           </div>
         </main>
+
+        {/* Mobile bottom navigation */}
+        <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-neutral-200 bg-white/95 backdrop-blur lg:hidden">
+          <div className="mx-auto grid max-w-5xl grid-cols-5 gap-1 px-2 pb-[env(safe-area-inset-bottom)] pt-2">
+            {mobileNavItems.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                className={({ isActive }) =>
+                  cn(
+                    'flex flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-[11px] font-medium transition',
+                    isActive ? 'text-neutral-900' : 'text-neutral-500 hover:text-neutral-900'
+                  )
+                }
+              >
+                <span className="text-current">{item.icon}</span>
+                <span className="leading-none">{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
+        </nav>
       </div>
     </div>
   )
