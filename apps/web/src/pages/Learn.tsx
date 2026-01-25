@@ -94,7 +94,7 @@ export default function Learn() {
   const [sourceType, setSourceType] = useState<SourceType>('article')
   const [precision, setPrecision] = useState<Precision>('balanced')
   const [title, setTitle] = useState('')
-  const [subjects, setSubjects] = useState<SubjectWithWorkspace[]>([])
+  const [_subjects, setSubjects] = useState<SubjectWithWorkspace[]>([])
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(() => currentSubject?.id ?? null)
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -111,7 +111,6 @@ export default function Learn() {
   const hasWelcomedRef = useRef(false)
 
   const wordCount = useMemo(() => sourceText.trim().split(/\s+/).filter(Boolean).length, [sourceText])
-  const isLongText = wordCount > 1500
   const canStart = isLoaded && isSignedIn && wordCount >= 10
 
   // Check for sample content from onboarding
@@ -630,8 +629,8 @@ export default function Learn() {
         loading={loopsLoading}
       />
 
-      {/* Input Phase - Simplified for first-time users */}
-      {state.phase === 'input' && isSignedIn && isFirstTimeUser && (
+      {/* Input Phase - Clean UI for all users */}
+      {state.phase === 'input' && isSignedIn && (
         <div
           className={cn(
             'grid gap-5 transition-all duration-700 ease-out animate-in fade-in slide-in-from-bottom-4 duration-500',
@@ -779,164 +778,6 @@ export default function Learn() {
                 </div>
               )}
             </div>
-          </Card>
-
-          {/* Right side - Reader preview (only visible when text is pasted) */}
-          {wordCount >= 10 && (
-            <Card className="overflow-hidden animate-in fade-in slide-in-from-right-8 duration-700 hidden lg:block">
-              <div className="flex items-center justify-between border-b border-neutral-100 bg-neutral-50 px-5 py-4">
-                <div>
-                  <div className="text-sm font-medium text-neutral-900">Preview</div>
-                  <p className="text-xs text-neutral-500">How your content will appear</p>
-                </div>
-                <Badge variant="neutral">{wordCount} words</Badge>
-              </div>
-              <ReaderPreview text={sourceText} title={title} className="h-125 bg-white" />
-            </Card>
-          )}
-        </div>
-      )}
-
-      {/* Input Phase - Full version for returning users */}
-      {state.phase === 'input' && isSignedIn && !isFirstTimeUser && (
-        <div
-          className={cn(
-            'grid gap-5 transition-all duration-700 ease-out animate-in fade-in slide-in-from-bottom-4 duration-500',
-            wordCount >= 10
-              ? 'lg:grid-cols-[30%_1fr]'
-              : 'lg:grid-cols-1 max-w-2xl mx-auto'
-          )}
-        >
-          {/* Left side - Input form (sticky) */}
-          <Card className={cn("p-6", wordCount >= 10 && "lg:sticky lg:top-4 lg:self-start")}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-sm font-medium text-neutral-900">What do you want to learn?</div>
-                <p className="mt-1 text-sm text-neutral-500">Paste text from an article, book, video transcript, or notes.</p>
-              </div>
-              <Badge variant={isLongText ? 'warning' : 'neutral'}>{wordCount} words</Badge>
-            </div>
-
-            <div className="mt-4">
-              <input
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Title (optional)"
-                className="mb-3 h-10 w-full border border-neutral-200 bg-white px-3 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/20"
-              />
-              <textarea
-                value={sourceText}
-                onChange={(e) => setSourceText(e.target.value)}
-                placeholder="Paste your text here..."
-                className={cn(
-                  'w-full resize-none border bg-white p-4 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/20 transition-all duration-500',
-                  isLongText ? 'border-amber-400' : 'border-neutral-200',
-                  wordCount >= 10 ? 'h-32' : 'h-64'
-                )}
-              />
-            </div>
-
-            {/* Options - shown after text is pasted */}
-            {wordCount >= 10 && (
-              <div className="mt-5 space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <div>
-                  <div className="text-sm font-medium text-neutral-900">Source type</div>
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    {([
-                      { id: 'article', label: 'Article', icon: '📄' },
-                      { id: 'meeting', label: 'Meeting', icon: '👥' },
-                      { id: 'podcast', label: 'Podcast', icon: '🎙️' },
-                      { id: 'video', label: 'Video', icon: '🎬' },
-                      { id: 'book', label: 'Book', icon: '📚' },
-                      { id: 'lecture', label: 'Lecture', icon: '🎓' },
-                    ] as const).map((type) => (
-                      <button
-                        key={type.id}
-                        type="button"
-                        onClick={() => setSourceType(type.id)}
-                        className={cn(
-                          'flex items-center gap-2 border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-neutral-900/20',
-                          sourceType === type.id
-                            ? 'border-neutral-900 bg-neutral-900 text-white'
-                            : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
-                        )}
-                      >
-                        <span>{type.icon}</span>
-                        <span>{type.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t border-neutral-100 pt-5">
-                  <div className="text-sm font-medium text-neutral-900">Detail level</div>
-                  <p className="mt-1 text-xs text-neutral-500">How strictly should we evaluate your explanation?</p>
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    {([
-                      { id: 'essential', label: 'Essential', desc: 'Core concepts only' },
-                      { id: 'balanced', label: 'Balanced', desc: 'Standard (Recommended)' },
-                      { id: 'precise', label: 'Precise', desc: 'Every detail matters' },
-                    ] as const).map((level) => (
-                      <button
-                        key={level.id}
-                        type="button"
-                        onClick={() => setPrecision(level.id)}
-                        className={cn(
-                          'flex flex-col border px-3 py-2 text-left text-sm transition focus:outline-none focus:ring-2 focus:ring-neutral-900/20',
-                          precision === level.id
-                            ? 'border-neutral-900 bg-neutral-900 text-white'
-                            : 'border-neutral-200 bg-white text-neutral-600 hover:bg-neutral-50'
-                        )}
-                      >
-                        <span className="font-medium">{level.label}</span>
-                        <span className={cn(
-                          'text-xs',
-                          precision === level.id ? 'text-neutral-300' : 'text-neutral-400'
-                        )}>{level.desc}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {subjects.length > 0 && (
-                  <div className="border-t border-neutral-100 pt-5">
-                    <div className="text-sm font-medium text-neutral-900">Subject (optional)</div>
-                    <select
-                      value={selectedSubjectId ?? ''}
-                      onChange={(e) => setSelectedSubjectId(e.target.value || null)}
-                      className="mt-3 h-10 w-full border border-neutral-200 bg-white px-3 text-sm text-neutral-900 outline-none focus:ring-2 focus:ring-neutral-900/20"
-                    >
-                      <option value="">No subject</option>
-                      {subjects.map((subject) => (
-                        <option key={subject.id} value={subject.id}>
-                          {subject.workspaceName} / {subject.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <div className={cn(
-              "mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
-              wordCount >= 10 && "animate-in fade-in slide-in-from-bottom-2 duration-400"
-            )}>
-              <Button size="lg" onClick={handleSourceSubmit} disabled={!canStart || isProcessing}>
-                {isProcessing ? (
-                  <>
-                    <Spinner className="border-white/30 border-t-white" />
-                    Creating...
-                  </>
-                ) : (
-                  'Start Learning'
-                )}
-              </Button>
-            </div>
-            {wordCount < 10 && (
-              <p className="mt-2 text-xs text-neutral-400">Paste at least 10 words to start a learning loop.</p>
-            )}
           </Card>
 
           {/* Right side - Reader preview (only visible when text is pasted) */}
