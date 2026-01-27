@@ -1,6 +1,6 @@
 # Retention Trainer - Project State (MVP)
 
-> Last updated: January 2026
+> Last updated: January 27, 2026
 
 ## Overview
 
@@ -442,18 +442,26 @@ retension/
 │       │   │   │   └── EmptyLearn.tsx   # First-time learning guide
 │       │   │   ├── ChatPanel.tsx # Follow-up conversation UI
 │       │   │   ├── Confetti.tsx  # Celebration animation
+│       │   │   ├── FirstTimeUserRedirect.tsx # Redirects first-time users to /learn
+│       │   │   ├── InProgressLoops.tsx # Hook + drawer for in-progress loops
 │       │   │   ├── Layout.tsx    # App shell with navigation
 │       │   │   ├── LoopProgress.tsx # Step progress indicator
 │       │   │   ├── LoopResultsPanel.tsx # Results display with animation
+│       │   │   ├── ProductTour.tsx # @reactour/tour onboarding journey
+│       │   │   ├── ReaderPreview.tsx # Text preview with Markdown support
 │       │   │   ├── RecordingEncouragement.tsx # Recording tips & encouragements
 │       │   │   ├── SocraticChat.tsx # Fill gaps chat interface
 │       │   │   └── SpeechMetrics.tsx # Filler words/pace display
 │       │   ├── context/
+│       │   │   ├── BooksContext.tsx      # Books state management
+│       │   │   ├── OnboardingContext.tsx # Onboarding/tour state
 │       │   │   ├── PreferencesContext.tsx # User preferences state
-│       │   │   └── TTSContext.tsx        # TTS state and controls
+│       │   │   ├── TTSContext.tsx        # TTS state and controls
+│       │   │   └── WorkspaceContext.tsx  # Workspace/subject state
 │       │   ├── hooks/
-│       │   │   ├── useAuth.ts       # Clerk auth wrapper
-│       │   │   └── useRecorder.ts   # Audio recording hook
+│       │   │   ├── useAuth.ts            # Clerk auth wrapper
+│       │   │   ├── useIsFirstTimeUser.ts # Detects first-time users
+│       │   │   └── useRecorder.ts        # Audio recording hook
 │       │   ├── lib/
 │       │   │   ├── api.ts           # Backend API client
 │       │   │   ├── audio.ts         # Audio utilities
@@ -553,8 +561,23 @@ CLERK_SECRET_KEY=sk_...
 - [x] Confetti celebration on loop completion
 - [x] Two-column layout for Socratic chat (concepts + source material)
 - [x] Collapsible panels in chat interface
+- [x] Reader view drawer for source material (side on desktop, bottom on mobile)
+- [x] Markdown-aware source material rendering with book-style typography
+- [x] Source material CTA moved to top of Socratic panel (prominent drawer toggle)
+- [x] Core learning flow entry animations (input, attempts, results, learning, simplify, complete)
 - [x] Improved loop progress stepper with even connector lines
 - [x] Score journey visualization on completion
+- [x] Mobile bottom navigation + responsive padding for small screens
+- [x] Default CTAs route users into Learn (not Test)
+- [x] Mobile-first recording controls (fixed bottom CTA for Learn phases)
+- [x] Mobile-friendly workspace creation inputs (stacked on small screens)
+- [x] Split view on Learn page (30% form / 70% reader preview when text pasted)
+- [x] ReaderPreview component with Markdown detection and book-style typography
+- [x] Title input field on Learn page (appears when text is pasted)
+- [x] Clean unified UI for all users on Learn page (removed separate first-time/returning views)
+- [x] In-progress loops moved to slide-out drawer (accessed via "Continue" button in header)
+- [x] Product tour using @reactour/tour for first-time user onboarding
+- [x] Tour highlights: text input, content type, precision, start button, preview, sidebar nav
 
 ### EPUB Book Import (Jan 2026)
 
@@ -582,6 +605,9 @@ CLERK_SECRET_KEY=sk_...
 - [x] Relationship strength increases when related concepts are demonstrated
 - [x] Knowledge graph endpoints use bulk joins (no N+1 concept lookups)
 - [x] Knowledge UI labels recency-adjusted mastery (graph, stats, pills)
+- [x] Concept extraction runs synchronously on loop creation (not fire-and-forget)
+- [x] Retry logic with exponential backoff for concept extraction (3 attempts)
+- [x] Text truncation for long source content (>8000 chars) in concept extraction
 
 ---
 
