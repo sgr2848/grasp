@@ -36,13 +36,23 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
       precision
     })
 
-    // Extract concepts in background (don't wait) - use precision setting
-    extractConcepts(sourceText, loop.precision)
-      .then(async ({ concepts, conceptMap }) => {
+    // Extract concepts synchronously to ensure knowledge map is created
+    try {
+      console.log(`[Loop ${loop.id}] Starting concept extraction...`)
+      const { concepts, conceptMap } = await extractConcepts(sourceText, loop.precision)
+
+      if (concepts.length > 0) {
+        console.log(`[Loop ${loop.id}] Extracted ${concepts.length} concepts, syncing...`)
         await learningLoopQueries.updateConcepts(loop.id, concepts, conceptMap)
         await syncLoopConcepts(loop.id)
-      })
-      .catch(err => console.error('Failed to extract concepts:', err))
+        console.log(`[Loop ${loop.id}] Knowledge map created successfully`)
+      } else {
+        console.warn(`[Loop ${loop.id}] No concepts extracted from source text`)
+      }
+    } catch (err) {
+      // Log error but don't fail the loop creation - concepts can be extracted later
+      console.error(`[Loop ${loop.id}] Failed to extract concepts:`, err)
+    }
 
     res.status(201).json(loop)
   } catch (error) {
@@ -156,10 +166,16 @@ router.post('/:id/attempts', authMiddleware, async (req: AuthRequest, res) => {
     // Evaluate the explanation - use loop's precision setting
     let keyConcepts = loop.keyConcepts?.map(c => c.concept) || []
     if (keyConcepts.length === 0) {
+      console.log(`[Loop ${loopId}] No concepts found, extracting now (fallback)...`)
       const extracted = await extractConcepts(loop.sourceText, loop.precision)
-      await learningLoopQueries.updateConcepts(loop.id, extracted.concepts, extracted.conceptMap)
-      await syncLoopConcepts(loop.id)
-      keyConcepts = extracted.concepts.map(c => c.concept)
+      if (extracted.concepts.length > 0) {
+        await learningLoopQueries.updateConcepts(loop.id, extracted.concepts, extracted.conceptMap)
+        await syncLoopConcepts(loop.id)
+        keyConcepts = extracted.concepts.map(c => c.concept)
+        console.log(`[Loop ${loopId}] Fallback extraction successful: ${keyConcepts.length} concepts`)
+      } else {
+        console.warn(`[Loop ${loopId}] Fallback extraction failed - no concepts extracted`)
+      }
     }
     const evaluation = await evaluateWithConcepts(
       loop.sourceText,
@@ -380,17 +396,27 @@ router.post('/:id/socratic/:sessionId/message', authMiddleware, async (req: Auth
     // Mark concept as addressed if any
     if (response.addressedConcept) {
       await socraticSessionQueries.markConceptAddressed(sessionId, response.addressedConcept)
+      console.log(`[Socratic] Concept addressed: "${response.addressedConcept}"`)
     }
 
     // Check if all concepts addressed
     const updatedSession = await socraticSessionQueries.findById(sessionId)
-    const allAddressed = session.targetConcepts.every(
-      c => updatedSession?.conceptsAddressed?.includes(c)
-    )
+    const targetConcepts = updatedSession?.targetConcepts || []
+    const addressedConcepts = updatedSession?.conceptsAddressed || []
+
+    console.log(`[Socratic] Target concepts (${targetConcepts.length}):`, targetConcepts)
+    console.log(`[Socratic] Addressed concepts (${addressedConcepts.length}):`, addressedConcepts)
+
+    // All target concepts must be in the addressed list
+    const allAddressed = targetConcepts.length > 0 &&
+      targetConcepts.every(c => addressedConcepts.includes(c))
+
+    console.log(`[Socratic] All addressed: ${allAddressed} (${addressedConcepts.length}/${targetConcepts.length})`)
 
     if (allAddressed) {
       await socraticSessionQueries.updateStatus(sessionId, 'completed')
       await learningLoopQueries.updatePhase(loopId, 'second_attempt')
+      console.log('[Socratic] Session completed, moving to second_attempt phase')
     }
 
     res.json({

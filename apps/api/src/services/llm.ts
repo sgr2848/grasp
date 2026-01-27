@@ -168,7 +168,7 @@ interface ConceptsResponse {
   conceptMap: ConceptMap
 }
 
-export async function extractConcepts(sourceText: string, precision: Precision = 'balanced'): Promise<{ concepts: KeyConcept[]; conceptMap: ConceptMap }> {
+export async function extractConcepts(sourceText: string, precision: Precision = 'balanced', retries = 2): Promise<{ concepts: KeyConcept[]; conceptMap: ConceptMap }> {
   const precisionInstructions = {
     essential: `
 PRECISION MODE: ESSENTIAL
@@ -190,12 +190,25 @@ Every detail matters - be thorough and specific.
 - Accuracy of specific facts will be tested`
   }
 
-  const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
-    messages: [
-      {
-        role: 'system',
-        content: `Analyze this text and extract the key concepts someone should understand.
+  // Truncate very long text to avoid token limits
+  const truncatedText = sourceText.length > 8000 ? sourceText.slice(0, 8000) + '...' : sourceText
+
+  let lastError: Error | null = null
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      if (attempt > 0) {
+        console.log(`[extractConcepts] Retry attempt ${attempt}/${retries}...`)
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+      }
+
+      const response = await getOpenAI().chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: `Analyze this text and extract the key concepts someone should understand.
 ${precisionInstructions[precision]}
 
 For each concept:
@@ -216,31 +229,50 @@ Return ONLY valid JSON:
     ]
   }
 }`
-      },
-      {
-        role: 'user',
-        content: `Text to analyze:\n"""\n${sourceText}\n"""`
+          },
+          {
+            role: 'user',
+            content: `Text to analyze:\n"""\n${truncatedText}\n"""`
+          }
+        ],
+        response_format: { type: 'json_object' },
+        max_tokens: 1500,
+        temperature: 0.3
+      })
+
+      const content = response.choices[0].message.content
+      if (!content) {
+        console.warn('[extractConcepts] Empty response from OpenAI')
+        continue // Try again
       }
-    ],
-    response_format: { type: 'json_object' },
-    max_tokens: 1500,
-    temperature: 0.3
-  })
 
-  const content = response.choices[0].message.content
-  if (!content) {
-    return { concepts: [], conceptMap: { relationships: [] } }
-  }
+      try {
+        const parsed = JSON.parse(content) as ConceptsResponse
+        const concepts = parsed.concepts || []
+        const conceptMap = parsed.conceptMap || { relationships: [] }
 
-  try {
-    const parsed = JSON.parse(content) as ConceptsResponse
-    return {
-      concepts: parsed.concepts || [],
-      conceptMap: parsed.conceptMap || { relationships: [] }
+        if (concepts.length === 0) {
+          console.warn('[extractConcepts] OpenAI returned empty concepts array')
+          continue // Try again
+        }
+
+        console.log(`[extractConcepts] Successfully extracted ${concepts.length} concepts`)
+        return { concepts, conceptMap }
+      } catch (parseError) {
+        console.error('[extractConcepts] Failed to parse JSON response:', parseError)
+        lastError = parseError instanceof Error ? parseError : new Error(String(parseError))
+        continue // Try again
+      }
+    } catch (apiError) {
+      console.error(`[extractConcepts] OpenAI API error (attempt ${attempt + 1}):`, apiError)
+      lastError = apiError instanceof Error ? apiError : new Error(String(apiError))
+      // Continue to retry
     }
-  } catch {
-    return { concepts: [], conceptMap: { relationships: [] } }
   }
+
+  // All retries exhausted - return empty result rather than throwing
+  console.error('[extractConcepts] All retries exhausted, returning empty result. Last error:', lastError)
+  return { concepts: [], conceptMap: { relationships: [] } }
 }
 
 export async function evaluateWithConcepts(
