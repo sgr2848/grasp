@@ -463,6 +463,12 @@ export default function Layout() {
                     <NavLink
                       to={item.path}
                       onClick={() => setSidebarOpen(false)}
+                      data-tour={
+                        item.path === '/learn' ? 'sidebar-learn' :
+                        item.path === '/dashboard' ? 'sidebar-dashboard' :
+                        item.path === '/knowledge' ? 'sidebar-knowledge' :
+                        undefined
+                      }
                       className={({ isActive }) =>
                         cn(
                           'flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-neutral-900/20 focus:ring-inset',

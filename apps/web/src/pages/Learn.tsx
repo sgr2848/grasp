@@ -652,6 +652,7 @@ export default function Learn() {
               />
             )}
             <textarea
+              data-tour="text-input"
               value={sourceText}
               onChange={(e) => setSourceText(e.target.value)}
               placeholder="Paste any text here - an article, meeting notes, book chapter, podcast transcript..."
@@ -675,7 +676,7 @@ export default function Learn() {
                 </div>
 
                 {/* Content type selection */}
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-400 delay-100">
+                <div data-tour="content-type" className="animate-in fade-in slide-in-from-bottom-2 duration-400 delay-100">
                   <div className="text-xs font-medium text-neutral-500 mb-3">What type of content is this?</div>
                   <div className="flex flex-wrap gap-2 stagger-children">
                     {([
@@ -707,7 +708,7 @@ export default function Learn() {
                 </div>
 
                 {/* Precision level selection */}
-                <div className="mt-5 animate-in fade-in slide-in-from-bottom-2 duration-400 delay-300">
+                <div data-tour="precision-level" className="mt-5 animate-in fade-in slide-in-from-bottom-2 duration-400 delay-300">
                   <div className="text-xs font-medium text-neutral-500 mb-3">How detailed should the check be?</div>
                   <div className="flex flex-wrap gap-2 stagger-children">
                     {([
@@ -745,6 +746,7 @@ export default function Learn() {
               wordCount >= 10 && "animate-in fade-in slide-in-from-bottom-2 duration-400 delay-200"
             )}>
               <Button
+                data-tour="start-button"
                 size="lg"
                 onClick={handleSourceSubmit}
                 disabled={!canStart || isProcessing}
@@ -792,7 +794,7 @@ export default function Learn() {
 
           {/* Right side - Reader preview (only visible when text is pasted) */}
           {wordCount >= 10 && (
-            <Card className="overflow-hidden animate-in fade-in slide-in-from-right-8 duration-700 hidden lg:block">
+            <Card data-tour="reader-preview" className="overflow-hidden animate-in fade-in slide-in-from-right-8 duration-700 hidden lg:block">
               <div className="flex items-center justify-between border-b border-neutral-100 bg-neutral-50 px-5 py-4">
                 <div>
                   <div className="text-sm font-medium text-neutral-900">Preview</div>

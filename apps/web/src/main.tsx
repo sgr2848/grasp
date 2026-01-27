@@ -7,6 +7,7 @@ import { PreferencesProvider } from './context/PreferencesContext'
 import { WorkspaceProvider } from './context/WorkspaceContext'
 import { OnboardingProvider } from './context/OnboardingContext'
 import { BooksProvider } from './context/BooksContext'
+import { ProductTourProvider } from './components/ProductTour'
 import App from './App'
 import './index.css'
 
@@ -25,7 +26,9 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <OnboardingProvider>
               <BooksProvider>
                 <BrowserRouter>
-                  <App />
+                  <ProductTourProvider>
+                    <App />
+                  </ProductTourProvider>
                 </BrowserRouter>
               </BooksProvider>
             </OnboardingProvider>
