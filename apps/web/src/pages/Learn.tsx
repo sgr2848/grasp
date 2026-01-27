@@ -652,7 +652,6 @@ export default function Learn() {
               />
             )}
             <textarea
-              data-tour="text-input"
               value={sourceText}
               onChange={(e) => setSourceText(e.target.value)}
               placeholder="Paste any text here - an article, meeting notes, book chapter, podcast transcript..."
@@ -996,6 +995,19 @@ export default function Learn() {
               </div>
             </div>
 
+            {/* First-time user hint */}
+            {isFirstTimeUser && state.phase === 'first_attempt' && (
+              <div className="flex items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <svg className="h-5 w-5 shrink-0 text-blue-500 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-sm text-blue-700">
+                  <span className="font-medium">How this works:</span> Hit record and explain what you just read as if teaching someone.
+                  We'll score how much you remembered and help you fill any gaps.
+                </div>
+              </div>
+            )}
+
             {/* Source preview */}
             <div className="border border-neutral-100 bg-neutral-50 p-4">
               <div className="text-xs font-medium text-neutral-500">Source Material (for reference only)</div>
@@ -1130,7 +1142,19 @@ export default function Learn() {
       {/* Results Phases */}
       {(state.phase === 'first_results' || state.phase === 'second_results' || state.phase === 'simplify_results') &&
         state.currentAttempt && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4">
+            {/* First-time user hint for results */}
+            {isFirstTimeUser && state.phase === 'first_results' && (
+              <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                <svg className="h-5 w-5 shrink-0 text-emerald-500 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div className="text-sm text-emerald-700">
+                  <span className="font-medium">Your score is in!</span> Green items are what you remembered correctly.
+                  Next, we'll help you learn what you missed through a quick conversation.
+                </div>
+              </div>
+            )}
             <LoopResultsPanel
               attempt={state.currentAttempt}
               previousAttempt={previousAttempt}
@@ -1145,7 +1169,19 @@ export default function Learn() {
 
       {/* Learning Phase (Socratic Dialogue) */}
       {state.phase === 'learning' && state.socraticSession && state.loop && (
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4">
+          {/* First-time user hint for Socratic learning */}
+          {isFirstTimeUser && (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
+              <svg className="h-5 w-5 shrink-0 text-amber-500 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+              <div className="text-sm text-amber-700">
+                <span className="font-medium">Fill the gaps!</span> Chat with the AI to understand what you missed.
+                Once you've covered the key points, you'll get another chance to explain.
+              </div>
+            </div>
+          )}
           <SocraticChat
             session={state.socraticSession}
             sourceText={state.loop.sourceText}
