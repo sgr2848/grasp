@@ -1,5 +1,6 @@
 import { TourProvider, useTour, type StepType, type PopoverContentProps } from '@reactour/tour'
 import { useCallback, useEffect, type ReactNode } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useOnboarding } from '@/context/OnboardingContext'
 import { useAuth as useClerkAuth } from '@clerk/clerk-react'
 import { cn } from '@/lib/cn'
@@ -254,17 +255,21 @@ function TourAutoStart() {
   const { setIsOpen } = useTour()
   const { showWelcome, isComplete, startTour } = useOnboarding()
   const { isSignedIn } = useClerkAuth()
+  const location = useLocation()
+
+  // Only start tour on the Learn page
+  const isOnLearnPage = location.pathname === '/learn' || location.pathname === '/app'
 
   useEffect(() => {
-    // Auto-start tour for first-time signed-in users after a delay
-    if (showWelcome && !isComplete && isSignedIn) {
+    // Auto-start tour for first-time signed-in users on Learn page after a delay
+    if (showWelcome && !isComplete && isSignedIn && isOnLearnPage) {
       const timer = setTimeout(() => {
         startTour()
         setIsOpen(true)
       }, 1000)
       return () => clearTimeout(timer)
     }
-  }, [showWelcome, isComplete, isSignedIn, setIsOpen, startTour])
+  }, [showWelcome, isComplete, isSignedIn, isOnLearnPage, setIsOpen, startTour])
 
   return null
 }
