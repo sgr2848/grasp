@@ -5,7 +5,7 @@ import { useOnboarding } from '@/context/OnboardingContext'
 import { useAuth as useClerkAuth } from '@clerk/clerk-react'
 import { cn } from '@/lib/cn'
 
-// Tour steps configuration
+// Tour steps configuration - only includes always-visible elements
 const tourSteps: StepType[] = [
   {
     selector: '[data-tour="text-input"]',
@@ -14,59 +14,11 @@ const tourSteps: StepType[] = [
         <h3 className="text-base font-semibold text-neutral-900">Paste what you want to learn</h3>
         <p className="text-sm text-neutral-600">
           Start by pasting any text - an article, meeting notes, book chapter, or transcript.
-          This is what you'll practice explaining back.
+          Once you paste 10+ words, you'll see options to customize your learning.
         </p>
       </div>
     ),
     position: 'bottom',
-  },
-  {
-    selector: '[data-tour="content-type"]',
-    content: (
-      <div className="space-y-2">
-        <h3 className="text-base font-semibold text-neutral-900">Choose your content type</h3>
-        <p className="text-sm text-neutral-600">
-          Select what kind of content you're learning from. This helps us tailor the evaluation to your material.
-        </p>
-      </div>
-    ),
-    position: 'top',
-  },
-  {
-    selector: '[data-tour="precision-level"]',
-    content: (
-      <div className="space-y-2">
-        <h3 className="text-base font-semibold text-neutral-900">Set your precision level</h3>
-        <p className="text-sm text-neutral-600">
-          Choose how detailed the check should be. "Main ideas" for quick overviews, "Every detail" for comprehensive mastery.
-        </p>
-      </div>
-    ),
-    position: 'top',
-  },
-  {
-    selector: '[data-tour="start-button"]',
-    content: (
-      <div className="space-y-2">
-        <h3 className="text-base font-semibold text-neutral-900">Start your learning loop</h3>
-        <p className="text-sm text-neutral-600">
-          Once you've read the material, click here to begin. You'll explain it back in your own words while recording.
-        </p>
-      </div>
-    ),
-    position: 'top',
-  },
-  {
-    selector: '[data-tour="reader-preview"]',
-    content: (
-      <div className="space-y-2">
-        <h3 className="text-base font-semibold text-neutral-900">Preview your content</h3>
-        <p className="text-sm text-neutral-600">
-          See how your text will look formatted. This appears when you paste 10+ words.
-        </p>
-      </div>
-    ),
-    position: 'left',
   },
   {
     selector: '[data-tour="sidebar-learn"]',
@@ -74,7 +26,7 @@ const tourSteps: StepType[] = [
       <div className="space-y-2">
         <h3 className="text-base font-semibold text-neutral-900">Learn</h3>
         <p className="text-sm text-neutral-600">
-          This is your main learning hub. Paste content here and test your understanding.
+          This is your main learning hub. Paste content, explain it back by recording yourself, and get AI feedback on what you remembered.
         </p>
       </div>
     ),
@@ -86,7 +38,7 @@ const tourSteps: StepType[] = [
       <div className="space-y-2">
         <h3 className="text-base font-semibold text-neutral-900">Dashboard</h3>
         <p className="text-sm text-neutral-600">
-          Track your progress, see your learning streaks, and review scheduled items.
+          Track your progress, see your learning streaks, and find items due for review.
         </p>
       </div>
     ),
