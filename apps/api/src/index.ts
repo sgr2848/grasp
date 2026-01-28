@@ -61,32 +61,36 @@ app.use('/api/loops', loopsRoutes)
 app.use('/api/books', booksRoutes)
 app.use('/api/knowledge', knowledgeRoutes)
 
-// Dynamic import for youtube routes to catch any loading errors
-import('./routes/youtube.js')
-  .then(({ default: youtubeRoutes }) => {
-    app.use('/api/youtube', youtubeRoutes)
-    console.log('[Routes] YouTube routes loaded successfully')
-  })
-  .catch((error) => {
-    console.error('[Routes] Failed to load YouTube routes:', error)
-  })
-
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' })
 })
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' })
-})
+// Start server after loading youtube routes (async)
+async function startServer() {
+  // Load youtube routes dynamically to catch any errors
+  try {
+    const { default: youtubeRoutes } = await import('./routes/youtube.js')
+    app.use('/api/youtube', youtubeRoutes)
+    console.log('[Routes] YouTube routes loaded successfully')
+  } catch (error) {
+    console.error('[Routes] Failed to load YouTube routes:', error)
+  }
 
-// Error handler
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Error:', err)
-  res.status(500).json({ error: err.message || 'Internal server error' })
-})
+  // 404 handler (must be after all routes)
+  app.use((req, res) => {
+    res.status(404).json({ error: 'Not found' })
+  })
 
-app.listen(PORT, () => {
-  console.log(`API server running on http://localhost:${PORT}`)
-})
+  // Error handler
+  app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('Error:', err)
+    res.status(500).json({ error: err.message || 'Internal server error' })
+  })
+
+  app.listen(PORT, () => {
+    console.log(`API server running on http://localhost:${PORT}`)
+  })
+}
+
+startServer()
