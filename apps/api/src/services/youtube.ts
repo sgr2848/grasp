@@ -1,18 +1,24 @@
 import { YoutubeTranscript } from 'youtube-transcript'
 import ytdl from '@distube/ytdl-core'
-import { create as createYtDlp } from 'yt-dlp-exec'
 import fs from 'fs'
 import path from 'path'
 import { transcribeAudio } from './whisper.js'
 import { transcribeBufferWithDiarization, SpeakerSegment } from './assemblyai.js'
 
-// Lazy initialization of yt-dlp to prevent route registration failures
-let ytDlpInstance: ReturnType<typeof createYtDlp> | null = null
+// Dynamic import of yt-dlp-exec to prevent route registration failures
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let ytDlpInstance: any = null
 
-function getYtDlp() {
+async function getYtDlp() {
   if (!ytDlpInstance) {
-    const ytDlpPath = process.env.YT_DLP_PATH
-    ytDlpInstance = ytDlpPath ? createYtDlp(ytDlpPath) : createYtDlp()
+    try {
+      const { create } = await import('yt-dlp-exec')
+      const ytDlpPath = process.env.YT_DLP_PATH
+      ytDlpInstance = ytDlpPath ? create(ytDlpPath) : create()
+    } catch (error) {
+      console.error('[YouTube] Failed to load yt-dlp-exec:', error)
+      throw new Error('yt-dlp is not available on this server')
+    }
   }
   return ytDlpInstance
 }
@@ -222,7 +228,8 @@ async function downloadAudioWithYtDlp(videoId: string): Promise<{ audioBuffer: B
 
     try {
       // Get video info for duration first
-      const info = await getYtDlp()(videoUrl, {
+      const ytDlp = await getYtDlp()
+      const info = await ytDlp(videoUrl, {
         dumpSingleJson: true,
         skipDownload: true,
         ...options,
@@ -235,7 +242,7 @@ async function downloadAudioWithYtDlp(videoId: string): Promise<{ audioBuffer: B
       }
 
       // Download audio using yt-dlp
-      await getYtDlp()(videoUrl, {
+      await ytDlp(videoUrl, {
         extractAudio: true,
         audioFormat: 'mp3',
         audioQuality: 5,
