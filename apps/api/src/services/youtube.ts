@@ -6,9 +6,16 @@ import path from 'path'
 import { transcribeAudio } from './whisper.js'
 import { transcribeBufferWithDiarization, SpeakerSegment } from './assemblyai.js'
 
-// Use YT_DLP_PATH env var if set, otherwise let yt-dlp-exec use its bundled binary
-const ytDlpPath = process.env.YT_DLP_PATH
-const ytDlp = ytDlpPath ? createYtDlp(ytDlpPath) : createYtDlp()
+// Lazy initialization of yt-dlp to prevent route registration failures
+let ytDlpInstance: ReturnType<typeof createYtDlp> | null = null
+
+function getYtDlp() {
+  if (!ytDlpInstance) {
+    const ytDlpPath = process.env.YT_DLP_PATH
+    ytDlpInstance = ytDlpPath ? createYtDlp(ytDlpPath) : createYtDlp()
+  }
+  return ytDlpInstance
+}
 
 export interface YouTubeVideoInfo {
   videoId: string
@@ -215,7 +222,7 @@ async function downloadAudioWithYtDlp(videoId: string): Promise<{ audioBuffer: B
 
     try {
       // Get video info for duration first
-      const info = await ytDlp(videoUrl, {
+      const info = await getYtDlp()(videoUrl, {
         dumpSingleJson: true,
         skipDownload: true,
         ...options,
@@ -228,7 +235,7 @@ async function downloadAudioWithYtDlp(videoId: string): Promise<{ audioBuffer: B
       }
 
       // Download audio using yt-dlp
-      await ytDlp(videoUrl, {
+      await getYtDlp()(videoUrl, {
         extractAudio: true,
         audioFormat: 'mp3',
         audioQuality: 5,
