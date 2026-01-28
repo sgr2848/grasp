@@ -13,8 +13,10 @@ async function getYtDlp() {
   if (!ytDlpInstance) {
     try {
       const { create } = await import('yt-dlp-exec')
-      const ytDlpPath = process.env.YT_DLP_PATH
-      ytDlpInstance = ytDlpPath ? create(ytDlpPath) : create()
+      // Use YT_DLP_PATH if set, otherwise use 'yt-dlp' from system PATH
+      const ytDlpPath = process.env.YT_DLP_PATH || 'yt-dlp'
+      ytDlpInstance = create(ytDlpPath)
+      console.log(`[YouTube] Using yt-dlp at: ${ytDlpPath}`)
     } catch (error) {
       console.error('[YouTube] Failed to load yt-dlp-exec:', error)
       throw new Error('yt-dlp is not available on this server')
