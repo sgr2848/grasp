@@ -13,6 +13,7 @@ import { cn } from '@/lib/cn'
 
 const PHASE_LABELS: Record<LoopPhase, string> = {
   prior_knowledge: 'Prior Knowledge',
+  reading: 'Reading',
   first_attempt: 'First Attempt',
   first_results: 'Review Results',
   learning: 'Filling Gaps',

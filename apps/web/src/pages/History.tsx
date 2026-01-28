@@ -22,6 +22,7 @@ type HistoryItem =
 
 const PHASE_LABELS: Record<LoopPhase, { label: string; color: 'warning' | 'info' | 'success' | 'danger' | 'neutral' }> = {
   prior_knowledge: { label: 'Prior Knowledge', color: 'neutral' },
+  reading: { label: 'Reading', color: 'neutral' },
   first_attempt: { label: 'First Attempt', color: 'info' },
   first_results: { label: 'Review Results', color: 'info' },
   learning: { label: 'Filling Gaps', color: 'warning' },
