@@ -2,6 +2,11 @@ import OpenAI from 'openai'
 import type { Persona, Analysis } from '../types/index.js'
 import { personaConfig } from './personas.js'
 
+// Maximum number of messages to include in context (keeps token usage bounded)
+const MAX_HISTORY_MESSAGES = 6
+// Maximum characters of source text to include
+const MAX_SOURCE_TEXT_CHARS = 2000
+
 let openai: OpenAI | null = null
 
 function getOpenAI(): OpenAI {
@@ -46,7 +51,7 @@ You are having a follow-up conversation with a learner who just explained a text
 
 Original text they were explaining:
 """
-${sourceText}
+${sourceText.substring(0, MAX_SOURCE_TEXT_CHARS)}${sourceText.length > MAX_SOURCE_TEXT_CHARS ? '...' : ''}
 """
 
 Their initial score: ${Math.round((analysis.coverage * 0.6 + analysis.accuracy * 0.4) * 100)}%
@@ -74,11 +79,22 @@ Return ONLY valid JSON:
   "remainingMissedPoints": ["List of points still not addressed"]
 }`
 
+  // Apply sliding window to conversation history
+  const recentMessages = messages.length > MAX_HISTORY_MESSAGES
+    ? messages.slice(-MAX_HISTORY_MESSAGES)
+    : messages
+
+  // If we trimmed messages, prepend a summary note
+  const historyPrefix = messages.length > MAX_HISTORY_MESSAGES
+    ? [{ role: 'system' as const, content: `[Conversation context: ${messages.length - MAX_HISTORY_MESSAGES} earlier messages omitted]` }]
+    : []
+
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.2',
     messages: [
       { role: 'system', content: systemPrompt },
-      ...messages.map(m => ({
+      ...historyPrefix,
+      ...recentMessages.map(m => ({
         role: m.role as 'user' | 'assistant',
         content: m.content
       }))
@@ -107,7 +123,7 @@ export async function generateFollowUpQuestion(
   }
 
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.2',
     messages: [
       {
         role: 'system',

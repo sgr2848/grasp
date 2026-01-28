@@ -4,15 +4,20 @@ import type {
   LearningLoop, LoopAttempt, SocraticSession, ReviewSchedule, KeyConcept, ConceptMap,
   LoopStatus, LoopPhase, AttemptType, SocraticMessage, SpeechMetrics, Book, Chapter, Precision,
   Concept, UserConcept, ConceptRelationshipRecord, LoopConcept, ConceptImportance, RelationshipType,
-  PriorKnowledgeAnalysis
+  PriorKnowledgeAnalysis, LoopMetadata
 } from '../types/index.js'
+
+// Standard SELECT columns for user queries are inlined to avoid unsafe SQL helpers.
 
 export const userQueries = {
   async findById(id: string): Promise<User | null> {
     const result = await sql`
       SELECT id, selected_persona as "selectedPersona", tts_enabled as "ttsEnabled",
-             is_paid as "isPaid", loops_used_today as "loopsUsedToday",
-             last_usage_reset_at as "lastUsageResetAt", created_at as "createdAt"
+             is_paid as "isPaid", COALESCE(subscription_tier, CASE WHEN is_paid THEN 'pro' ELSE 'free' END) as "subscriptionTier",
+             loops_used_today as "loopsUsedToday", last_usage_reset_at as "lastUsageResetAt",
+             COALESCE(loops_used_this_month, 0) as "loopsUsedThisMonth",
+             COALESCE(usage_reset_month, DATE_TRUNC('month', NOW())) as "usageResetMonth",
+             created_at as "createdAt"
       FROM users WHERE id = ${id}
     `
     return result[0] as User | null
@@ -23,8 +28,11 @@ export const userQueries = {
       INSERT INTO users (id)
       VALUES (${id})
       RETURNING id, selected_persona as "selectedPersona", tts_enabled as "ttsEnabled",
-                is_paid as "isPaid", loops_used_today as "loopsUsedToday",
-                last_usage_reset_at as "lastUsageResetAt", created_at as "createdAt"
+                is_paid as "isPaid", COALESCE(subscription_tier, CASE WHEN is_paid THEN 'pro' ELSE 'free' END) as "subscriptionTier",
+                loops_used_today as "loopsUsedToday", last_usage_reset_at as "lastUsageResetAt",
+                COALESCE(loops_used_this_month, 0) as "loopsUsedThisMonth",
+                COALESCE(usage_reset_month, DATE_TRUNC('month', NOW())) as "usageResetMonth",
+                created_at as "createdAt"
     `
     return result[0] as User
   },
@@ -60,8 +68,11 @@ export const userQueries = {
         SET selected_persona = ${prefs.selectedPersona}, tts_enabled = ${prefs.ttsEnabled}
         WHERE id = ${id}
         RETURNING id, selected_persona as "selectedPersona", tts_enabled as "ttsEnabled",
-                  is_paid as "isPaid", loops_used_today as "loopsUsedToday",
-                  last_usage_reset_at as "lastUsageResetAt", created_at as "createdAt"
+                  is_paid as "isPaid", COALESCE(subscription_tier, CASE WHEN is_paid THEN 'pro' ELSE 'free' END) as "subscriptionTier",
+                  loops_used_today as "loopsUsedToday", last_usage_reset_at as "lastUsageResetAt",
+                  COALESCE(loops_used_this_month, 0) as "loopsUsedThisMonth",
+                  COALESCE(usage_reset_month, DATE_TRUNC('month', NOW())) as "usageResetMonth",
+                  created_at as "createdAt"
       `
       return result[0] as User | null
     } else if (prefs.selectedPersona !== undefined) {
@@ -69,8 +80,11 @@ export const userQueries = {
         UPDATE users SET selected_persona = ${prefs.selectedPersona}
         WHERE id = ${id}
         RETURNING id, selected_persona as "selectedPersona", tts_enabled as "ttsEnabled",
-                  is_paid as "isPaid", loops_used_today as "loopsUsedToday",
-                  last_usage_reset_at as "lastUsageResetAt", created_at as "createdAt"
+                  is_paid as "isPaid", COALESCE(subscription_tier, CASE WHEN is_paid THEN 'pro' ELSE 'free' END) as "subscriptionTier",
+                  loops_used_today as "loopsUsedToday", last_usage_reset_at as "lastUsageResetAt",
+                  COALESCE(loops_used_this_month, 0) as "loopsUsedThisMonth",
+                  COALESCE(usage_reset_month, DATE_TRUNC('month', NOW())) as "usageResetMonth",
+                  created_at as "createdAt"
       `
       return result[0] as User | null
     } else if (prefs.ttsEnabled !== undefined) {
@@ -78,15 +92,18 @@ export const userQueries = {
         UPDATE users SET tts_enabled = ${prefs.ttsEnabled}
         WHERE id = ${id}
         RETURNING id, selected_persona as "selectedPersona", tts_enabled as "ttsEnabled",
-                  is_paid as "isPaid", loops_used_today as "loopsUsedToday",
-                  last_usage_reset_at as "lastUsageResetAt", created_at as "createdAt"
+                  is_paid as "isPaid", COALESCE(subscription_tier, CASE WHEN is_paid THEN 'pro' ELSE 'free' END) as "subscriptionTier",
+                  loops_used_today as "loopsUsedToday", last_usage_reset_at as "lastUsageResetAt",
+                  COALESCE(loops_used_this_month, 0) as "loopsUsedThisMonth",
+                  COALESCE(usage_reset_month, DATE_TRUNC('month', NOW())) as "usageResetMonth",
+                  created_at as "createdAt"
       `
       return result[0] as User | null
     }
     return this.findById(id)
   },
 
-  // Get user with usage stats, auto-reset if past midnight UTC
+  // Get user with daily usage stats, auto-reset if past midnight UTC (legacy)
   async getWithUsage(id: string): Promise<User | null> {
     const result = await sql`
       UPDATE users
@@ -103,23 +120,88 @@ export const userQueries = {
         END
       WHERE id = ${id}
       RETURNING id, selected_persona as "selectedPersona", tts_enabled as "ttsEnabled",
-                is_paid as "isPaid", loops_used_today as "loopsUsedToday",
-                last_usage_reset_at as "lastUsageResetAt", created_at as "createdAt"
+                is_paid as "isPaid", COALESCE(subscription_tier, CASE WHEN is_paid THEN 'pro' ELSE 'free' END) as "subscriptionTier",
+                loops_used_today as "loopsUsedToday", last_usage_reset_at as "lastUsageResetAt",
+                COALESCE(loops_used_this_month, 0) as "loopsUsedThisMonth",
+                COALESCE(usage_reset_month, DATE_TRUNC('month', NOW())) as "usageResetMonth",
+                created_at as "createdAt"
     `
     return result[0] as User | null
   },
 
-  // Increment usage counter
+  // Increment daily usage counter (legacy)
   async incrementUsage(id: string): Promise<User | null> {
     const result = await sql`
       UPDATE users
       SET loops_used_today = loops_used_today + 1
       WHERE id = ${id}
       RETURNING id, selected_persona as "selectedPersona", tts_enabled as "ttsEnabled",
-                is_paid as "isPaid", loops_used_today as "loopsUsedToday",
-                last_usage_reset_at as "lastUsageResetAt", created_at as "createdAt"
+                is_paid as "isPaid", COALESCE(subscription_tier, CASE WHEN is_paid THEN 'pro' ELSE 'free' END) as "subscriptionTier",
+                loops_used_today as "loopsUsedToday", last_usage_reset_at as "lastUsageResetAt",
+                COALESCE(loops_used_this_month, 0) as "loopsUsedThisMonth",
+                COALESCE(usage_reset_month, DATE_TRUNC('month', NOW())) as "usageResetMonth",
+                created_at as "createdAt"
     `
     return result[0] as User | null
+  },
+
+  // Get user with monthly usage stats, auto-reset if new month
+  async getWithMonthlyUsage(id: string): Promise<User | null> {
+    const result = await sql`
+      UPDATE users
+      SET
+        loops_used_this_month = CASE
+          WHEN usage_reset_month < DATE_TRUNC('month', NOW())
+          THEN 0
+          ELSE COALESCE(loops_used_this_month, 0)
+        END,
+        usage_reset_month = CASE
+          WHEN usage_reset_month < DATE_TRUNC('month', NOW())
+          THEN DATE_TRUNC('month', NOW())
+          ELSE COALESCE(usage_reset_month, DATE_TRUNC('month', NOW()))
+        END
+      WHERE id = ${id}
+      RETURNING id, selected_persona as "selectedPersona", tts_enabled as "ttsEnabled",
+                is_paid as "isPaid", COALESCE(subscription_tier, CASE WHEN is_paid THEN 'pro' ELSE 'free' END) as "subscriptionTier",
+                loops_used_today as "loopsUsedToday", last_usage_reset_at as "lastUsageResetAt",
+                COALESCE(loops_used_this_month, 0) as "loopsUsedThisMonth",
+                COALESCE(usage_reset_month, DATE_TRUNC('month', NOW())) as "usageResetMonth",
+                created_at as "createdAt"
+    `
+    return result[0] as User | null
+  },
+
+  // Increment monthly usage counter
+  async incrementMonthlyUsage(id: string): Promise<User | null> {
+    const result = await sql`
+      UPDATE users
+      SET loops_used_this_month = COALESCE(loops_used_this_month, 0) + 1
+      WHERE id = ${id}
+      RETURNING id, selected_persona as "selectedPersona", tts_enabled as "ttsEnabled",
+                is_paid as "isPaid", COALESCE(subscription_tier, CASE WHEN is_paid THEN 'pro' ELSE 'free' END) as "subscriptionTier",
+                loops_used_today as "loopsUsedToday", last_usage_reset_at as "lastUsageResetAt",
+                COALESCE(loops_used_this_month, 0) as "loopsUsedThisMonth",
+                COALESCE(usage_reset_month, DATE_TRUNC('month', NOW())) as "usageResetMonth",
+                created_at as "createdAt"
+    `
+    return result[0] as User | null
+  }
+}
+
+// Limit-checking queries for tier enforcement
+export const limitQueries = {
+  async getBookCount(userId: string): Promise<number> {
+    const result = await sql`
+      SELECT COUNT(*)::int as count FROM books WHERE user_id = ${userId}
+    `
+    return result[0]?.count ?? 0
+  },
+
+  async getConceptCount(userId: string): Promise<number> {
+    const result = await sql`
+      SELECT COUNT(*)::int as count FROM user_concepts WHERE user_id = ${userId}
+    `
+    return result[0]?.count ?? 0
   }
 }
 
@@ -368,18 +450,19 @@ export const learningLoopQueries = {
     sourceType: SourceType
     precision?: Precision
     initialPhase?: LoopPhase
+    metadata?: LoopMetadata
   }): Promise<LearningLoop> {
     const wordCount = data.sourceText.trim().split(/\s+/).length
     const precision = data.precision || 'balanced'
     const initialPhase = data.initialPhase || 'first_attempt'
     const result = await sql`
-      INSERT INTO learning_loops (user_id, subject_id, title, source_text, source_type, source_word_count, precision, current_phase)
-      VALUES (${data.userId}, ${data.subjectId || null}, ${data.title || null}, ${data.sourceText}, ${data.sourceType}, ${wordCount}, ${precision}, ${initialPhase})
+      INSERT INTO learning_loops (user_id, subject_id, title, source_text, source_type, source_word_count, precision, current_phase, metadata)
+      VALUES (${data.userId}, ${data.subjectId || null}, ${data.title || null}, ${data.sourceText}, ${data.sourceType}, ${wordCount}, ${precision}, ${initialPhase}, ${data.metadata ? JSON.stringify(data.metadata) : null})
       RETURNING id, user_id as "userId", subject_id as "subjectId", title,
                 source_text as "sourceText", source_type as "sourceType",
                 source_word_count as "sourceWordCount", precision,
                 key_concepts as "keyConcepts", concept_map as "conceptMap",
-                status, current_phase as "currentPhase",
+                status, current_phase as "currentPhase", metadata,
                 created_at as "createdAt", updated_at as "updatedAt"
     `
     return result[0] as LearningLoop
@@ -395,6 +478,7 @@ export const learningLoopQueries = {
              prior_knowledge_transcript as "priorKnowledgeTranscript",
              prior_knowledge_analysis as "priorKnowledgeAnalysis",
              prior_knowledge_score as "priorKnowledgeScore",
+             metadata,
              created_at as "createdAt", updated_at as "updatedAt"
       FROM learning_loops
       WHERE id = ${id}
@@ -419,7 +503,7 @@ export const learningLoopQueries = {
                source_text as "sourceText", source_type as "sourceType",
                source_word_count as "sourceWordCount", precision,
                key_concepts as "keyConcepts", concept_map as "conceptMap",
-               status, current_phase as "currentPhase",
+               status, current_phase as "currentPhase", metadata,
                created_at as "createdAt", updated_at as "updatedAt"
         FROM learning_loops
         WHERE user_id = ${userId} AND status = ${status} AND subject_id = ${subjectId}
@@ -433,7 +517,7 @@ export const learningLoopQueries = {
                source_text as "sourceText", source_type as "sourceType",
                source_word_count as "sourceWordCount", precision,
                key_concepts as "keyConcepts", concept_map as "conceptMap",
-               status, current_phase as "currentPhase",
+               status, current_phase as "currentPhase", metadata,
                created_at as "createdAt", updated_at as "updatedAt"
         FROM learning_loops
         WHERE user_id = ${userId} AND status = ${status}
@@ -447,7 +531,7 @@ export const learningLoopQueries = {
                source_text as "sourceText", source_type as "sourceType",
                source_word_count as "sourceWordCount", precision,
                key_concepts as "keyConcepts", concept_map as "conceptMap",
-               status, current_phase as "currentPhase",
+               status, current_phase as "currentPhase", metadata,
                created_at as "createdAt", updated_at as "updatedAt"
         FROM learning_loops
         WHERE user_id = ${userId} AND subject_id = ${subjectId}
@@ -460,7 +544,7 @@ export const learningLoopQueries = {
              source_text as "sourceText", source_type as "sourceType",
              source_word_count as "sourceWordCount", precision,
              key_concepts as "keyConcepts", concept_map as "conceptMap",
-             status, current_phase as "currentPhase",
+             status, current_phase as "currentPhase", metadata,
              created_at as "createdAt", updated_at as "updatedAt"
       FROM learning_loops
       WHERE user_id = ${userId}
@@ -480,7 +564,7 @@ export const learningLoopQueries = {
                 source_text as "sourceText", source_type as "sourceType",
                 source_word_count as "sourceWordCount", precision,
                 key_concepts as "keyConcepts", concept_map as "conceptMap",
-                status, current_phase as "currentPhase",
+                status, current_phase as "currentPhase", metadata,
                 created_at as "createdAt", updated_at as "updatedAt"
     `
     return result[0] as LearningLoop | null
@@ -495,7 +579,7 @@ export const learningLoopQueries = {
                 source_text as "sourceText", source_type as "sourceType",
                 source_word_count as "sourceWordCount", precision,
                 key_concepts as "keyConcepts", concept_map as "conceptMap",
-                status, current_phase as "currentPhase",
+                status, current_phase as "currentPhase", metadata,
                 created_at as "createdAt", updated_at as "updatedAt"
     `
     return result[0] as LearningLoop | null
@@ -510,7 +594,7 @@ export const learningLoopQueries = {
                 source_text as "sourceText", source_type as "sourceType",
                 source_word_count as "sourceWordCount", precision,
                 key_concepts as "keyConcepts", concept_map as "conceptMap",
-                status, current_phase as "currentPhase",
+                status, current_phase as "currentPhase", metadata,
                 created_at as "createdAt", updated_at as "updatedAt"
     `
     return result[0] as LearningLoop | null
@@ -1603,6 +1687,7 @@ export const priorKnowledgeQueries = {
                 prior_knowledge_transcript as "priorKnowledgeTranscript",
                 prior_knowledge_analysis as "priorKnowledgeAnalysis",
                 prior_knowledge_score as "priorKnowledgeScore",
+                metadata,
                 created_at as "createdAt", updated_at as "updatedAt"
     `
     return result[0] as LearningLoop | null
@@ -1623,6 +1708,7 @@ export const priorKnowledgeQueries = {
                 prior_knowledge_transcript as "priorKnowledgeTranscript",
                 prior_knowledge_analysis as "priorKnowledgeAnalysis",
                 prior_knowledge_score as "priorKnowledgeScore",
+                metadata,
                 created_at as "createdAt", updated_at as "updatedAt"
     `
     return result[0] as LearningLoop | null

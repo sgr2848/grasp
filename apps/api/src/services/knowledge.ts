@@ -8,6 +8,7 @@ import {
   socraticSessionQueries,
   userConceptQueries
 } from '../db/queries.js'
+import { canCreateConcept } from './featureGuard.js'
 
 function normalizeConceptName(name: string): string {
   return name.toLowerCase().trim()
@@ -109,6 +110,10 @@ export async function updateKnowledgeOnCompletion(loopId: string): Promise<void>
 
   const conceptIdByName = await ensureLoopConcepts(loop.id, loop.keyConcepts, loop.conceptMap)
 
+  // Check if user can create new concepts (tier limit)
+  const conceptCheck = await canCreateConcept(loop.userId)
+  const canAddNewConcepts = conceptCheck.allowed
+
   const latestAttempt = await loopAttemptQueries.findLatest(loopId)
   const attemptPhase = getAttemptPhase(latestAttempt)
   const demonstratedPhaseByConcept = new Map<string, LoopPhase>()
@@ -136,6 +141,14 @@ export async function updateKnowledgeOnCompletion(loopId: string): Promise<void>
     const demonstratedPhase = demonstratedPhaseByConcept.get(normalized) || null
     const demonstrated = demonstratedPhase !== null
     const existing = await userConceptQueries.findByUserAndConcept(loop.userId, conceptId)
+
+    // Skip creating new user-concept links if at tier limit
+    // But still update existing ones
+    if (!existing && !canAddNewConcepts) {
+      console.log(`[Knowledge] Skipping new concept for user ${loop.userId} (at tier limit): ${concept.concept}`)
+      continue
+    }
+
     const timesEncountered = (existing?.timesEncountered ?? 0) + 1
     const timesDemonstrated = (existing?.timesDemonstrated ?? 0) + (demonstrated ? 1 : 0)
     const masteryScore = computeMasteryScore(

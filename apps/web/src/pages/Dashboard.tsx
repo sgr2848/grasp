@@ -202,7 +202,7 @@ export default function Dashboard() {
             </div>
             <h3 className="text-xl font-semibold text-neutral-900">Welcome to Grasp</h3>
             <p className="mt-3 text-sm text-neutral-500 leading-relaxed">
-              Sign in to track your learning progress, build streaks, and master new concepts using the Feynman technique.
+              Sign in to track your learning progress, build streaks, and actually remember what you read.
             </p>
             <div className="mt-8">
               <SignInButton mode="modal">

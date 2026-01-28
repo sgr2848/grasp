@@ -15,8 +15,10 @@
     "@aws-sdk/client-s3": "^3.975.0",
     "@aws-sdk/s3-request-presigner": "^3.975.0",
     "@clerk/backend": "^1.27.0",
+    "@distube/ytdl-core": "^4.16.12",
     "@neondatabase/serverless": "^0.10.4",
     "adm-zip": "^0.5.16",
+    "assemblyai": "^4.22.1",
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "drizzle-orm": "^0.45.1",
@@ -24,7 +26,9 @@
     "fast-xml-parser": "^5.3.3",
     "multer": "^1.4.5-lts.2",
     "openai": "^4.103.0",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "youtube-transcript": "^1.2.1",
+    "yt-dlp-exec": "^1.0.2"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",

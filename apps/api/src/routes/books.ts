@@ -5,6 +5,7 @@ import { authMiddleware } from '../middleware/auth.js'
 import { parseEpub } from '../services/epub.js'
 import { extractConcepts } from '../services/llm.js'
 import { syncLoopConcepts } from '../services/knowledge.js'
+import { canUploadBook } from '../services/featureGuard.js'
 import { uploadEpub, uploadCoverImage, isStorageConfigured, deleteBookFiles, getSignedDownloadUrl } from '../services/storage.js'
 import type { AuthRequest } from '../types/index.js'
 import type { Book } from '../types/index.js'
@@ -41,6 +42,13 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req: AuthRe
 
     // Ensure user exists
     await userQueries.upsert(req.userId!)
+
+    // Check book upload limit
+    const bookCheck = await canUploadBook(req.userId!)
+    if (!bookCheck.allowed) {
+      res.status(403).json(bookCheck.error)
+      return
+    }
 
     // Parse the EPUB with smart chunking
     const parsed = await parseEpub(req.file.buffer)

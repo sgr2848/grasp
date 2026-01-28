@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { userQueries, workspaceQueries, subjectQueries } from '../db/queries.js'
 import { authMiddleware } from '../middleware/auth.js'
 import { personaConfig, freePersonas } from '../services/personas.js'
+import { getUserUsageStats } from '../services/featureGuard.js'
 import type { AuthRequest, Persona, UsageStats } from '../types/index.js'
 import { FREE_TIER_DAILY_LIMIT } from '../types/index.js'
 
@@ -10,12 +11,8 @@ const router = Router()
 // GET /api/user/preferences
 router.get('/preferences', authMiddleware, async (req: AuthRequest, res) => {
   try {
-    let user = await userQueries.findById(req.userId!)
-
-    if (!user) {
-      // Create user with defaults
-      user = await userQueries.create(req.userId!)
-    }
+    // upsert ensures user exists and creates default workspace for new users
+    const user = await userQueries.upsert(req.userId!)
 
     res.json({
       selectedPersona: user.selectedPersona,
@@ -123,8 +120,8 @@ router.get('/usage', authMiddleware, async (req: AuthRequest, res) => {
     let user = await userQueries.getWithUsage(req.userId!)
 
     if (!user) {
-      // Create user with defaults
-      user = await userQueries.create(req.userId!)
+      // upsert ensures user exists and creates default workspace for new users
+      user = await userQueries.upsert(req.userId!)
     }
 
     const dailyLimit = user.isPaid ? Infinity : FREE_TIER_DAILY_LIMIT
@@ -150,6 +147,20 @@ router.get('/usage', authMiddleware, async (req: AuthRequest, res) => {
     res.json(usage)
   } catch (error) {
     console.error('Usage fetch error:', error)
+    res.status(500).json({ error: 'Failed to fetch usage stats' })
+  }
+})
+
+// GET /api/user/usage-v2 - Get comprehensive usage stats with tier limits
+router.get('/usage-v2', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    // Ensure user exists
+    await userQueries.upsert(req.userId!)
+
+    const stats = await getUserUsageStats(req.userId!)
+    res.json(stats)
+  } catch (error) {
+    console.error('Usage-v2 fetch error:', error)
     res.status(500).json({ error: 'Failed to fetch usage stats' })
   }
 })

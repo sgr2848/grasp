@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { SignInButton, useAuth as useClerkAuth } from '@clerk/clerk-react'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { getSession, getSessions, getLoops, type SessionSummary, type LearningLoop, type LoopPhase } from '@/lib/api'
@@ -176,47 +176,61 @@ export default function History() {
           <p className="mt-1 text-sm text-neutral-500">Your past learning sessions and scores.</p>
         </div>
 
-        {/* Filter tabs */}
-        {isSignedIn && (
-          <div className="flex gap-1 rounded-lg bg-neutral-100 p-1">
-            <button
-              type="button"
-              onClick={() => setFilter('all')}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-sm font-medium transition',
-                filter === 'all'
-                  ? 'bg-white text-neutral-900 shadow-sm'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              )}
-            >
-              All
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter('learn')}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-sm font-medium transition',
-                filter === 'learn'
-                  ? 'bg-white text-neutral-900 shadow-sm'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              )}
-            >
-              Learn
-            </button>
-            <button
-              type="button"
-              onClick={() => setFilter('test')}
-              className={cn(
-                'rounded-md px-3 py-1.5 text-sm font-medium transition',
-                filter === 'test'
-                  ? 'bg-white text-neutral-900 shadow-sm'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              )}
-            >
-              Test
-            </button>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Filter tabs */}
+          {isSignedIn && (
+            <div className="flex gap-1 rounded-lg bg-neutral-100 p-1">
+              <button
+                type="button"
+                onClick={() => setFilter('all')}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                  filter === 'all'
+                    ? 'bg-white text-neutral-900 shadow-sm'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                )}
+              >
+                All
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter('learn')}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                  filter === 'learn'
+                    ? 'bg-white text-neutral-900 shadow-sm'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                )}
+              >
+                Learn
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter('test')}
+                className={cn(
+                  'rounded-md px-3 py-1.5 text-sm font-medium transition',
+                  filter === 'test'
+                    ? 'bg-white text-neutral-900 shadow-sm'
+                    : 'text-neutral-600 hover:text-neutral-900'
+                )}
+              >
+                Test
+              </button>
+            </div>
+          )}
+
+          {/* New Session button */}
+          {isSignedIn && (
+            <Link to="/learn">
+              <Button>
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                New Session
+              </Button>
+            </Link>
+          )}
+        </div>
       </div>
 
       {!isSignedIn && (

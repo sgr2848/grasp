@@ -34,7 +34,7 @@ interface EvaluationResponse {
 
 export async function extractKeyPoints(sourceText: string): Promise<string[]> {
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.2',
     messages: [
       {
         role: 'system',
@@ -75,7 +75,7 @@ export async function evaluateExplanation(
   const config = personaConfig[persona]
 
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.2',
     messages: [
       {
         role: 'system',
@@ -204,7 +204,7 @@ Every detail matters - be thorough and specific.
       }
 
       const response = await getOpenAI().chat.completions.create({
-        model: 'gpt-4o',
+        model: 'gpt-5.2',
         messages: [
           {
             role: 'system',
@@ -236,7 +236,7 @@ Return ONLY valid JSON:
           }
         ],
         response_format: { type: 'json_object' },
-        max_tokens: 1500,
+        max_completion_tokens: 1500,
         temperature: 0.3
       })
 
@@ -343,7 +343,7 @@ Scoring guidance:
 ` : ''
 
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.2',
     messages: [
       {
         role: 'system',
@@ -391,7 +391,7 @@ Return ONLY valid JSON:
       }
     ],
     response_format: { type: 'json_object' },
-    max_tokens: 800,
+    max_completion_tokens: 800,
     temperature: 0.5
   })
 
@@ -431,7 +431,7 @@ export async function assessPriorKnowledge(
   priorKnowledgeTranscript: string
 ): Promise<PriorKnowledgeAnalysis> {
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.2',
     messages: [
       {
         role: 'system',
@@ -479,7 +479,7 @@ Return ONLY valid JSON:
       }
     ],
     response_format: { type: 'json_object' },
-    max_tokens: 800,
+    max_completion_tokens: 800,
     temperature: 0.4
   })
 

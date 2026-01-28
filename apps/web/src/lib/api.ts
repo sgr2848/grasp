@@ -193,6 +193,68 @@ export async function getUserUsage(): Promise<UsageStats> {
   return response.json()
 }
 
+// V6: Tiered Pricing Types
+export type SubscriptionTier = 'free' | 'pro'
+
+export interface TierLimits {
+  maxBooks: number
+  maxSessionsPerMonth: number
+  maxConcepts: number
+  sessionLimitType: 'hard' | 'soft'
+}
+
+export interface UsageStatsV2 {
+  sessionsUsedThisMonth: number
+  booksCount: number
+  conceptsCount: number
+  tier: SubscriptionTier
+  limits: TierLimits
+  sessionsRemaining: number
+  booksRemaining: number
+  conceptsRemaining: number
+  sessionSoftCapWarning: boolean
+  monthResetAt: string
+}
+
+export interface FeatureLimitErrorData {
+  error: 'feature_limit_exceeded'
+  feature: 'books' | 'sessions' | 'concepts'
+  message: string
+  usage: UsageStatsV2
+  upgradeUrl?: string
+}
+
+export interface SoftCapWarning {
+  warning: 'soft_cap_approaching' | 'soft_cap_exceeded'
+  feature: 'sessions'
+  message: string
+  usage: UsageStatsV2
+}
+
+export class FeatureLimitExceededError extends Error {
+  public feature: 'books' | 'sessions' | 'concepts'
+  public usage: UsageStatsV2
+  public upgradeUrl?: string
+
+  constructor(data: FeatureLimitErrorData) {
+    super(data.message)
+    this.name = 'FeatureLimitExceededError'
+    this.feature = data.feature
+    this.usage = data.usage
+    this.upgradeUrl = data.upgradeUrl
+  }
+}
+
+export async function getUserUsageV2(): Promise<UsageStatsV2> {
+  const response = await fetchWithAuth(`${API_BASE}/user/usage-v2`)
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch usage stats')
+  }
+
+  return response.json()
+}
+
 export interface SessionSummary {
   id: string
   title: string | null
@@ -483,6 +545,7 @@ export async function startConversation(sessionId: string): Promise<{ message: s
 export type LoopStatus = 'in_progress' | 'mastered' | 'archived'
 export type LoopPhase =
   | 'prior_knowledge'
+  | 'reading'
   | 'first_attempt'
   | 'first_results'
   | 'learning'
@@ -523,6 +586,15 @@ export interface PriorKnowledgeAnalysis {
   feedback: string
 }
 
+// YouTube metadata stored with video loops
+export interface YouTubeMetadata {
+  youtubeId: string
+  youtubeUrl: string
+  channel: string
+  thumbnail: string
+  videoDuration: number | null
+}
+
 export interface LearningLoop {
   id: string
   userId: string
@@ -539,6 +611,7 @@ export interface LearningLoop {
   priorKnowledgeTranscript: string | null
   priorKnowledgeAnalysis: PriorKnowledgeAnalysis | null
   priorKnowledgeScore: number | null
+  metadata: YouTubeMetadata | null
   createdAt: string
   updatedAt: string
 }
@@ -604,6 +677,9 @@ export interface CreateLoopInput {
   sourceType: SourceType
   subjectId?: string
   precision?: Precision
+  metadata?: YouTubeMetadata
+  /** Optional starting phase - defaults to 'first_attempt' */
+  initialPhase?: LoopPhase
 }
 
 export interface SubmitAttemptInput {
@@ -618,6 +694,7 @@ export interface AttemptResult {
   attempt: LoopAttempt
   nextPhase: LoopPhase
   evaluation: Analysis
+  warning?: SoftCapWarning
 }
 
 export interface SocraticResponse {
@@ -678,8 +755,13 @@ export async function submitAttempt(loopId: string, data: SubmitAttemptInput): P
   })
 
   if (response.status === 429) {
-    const errorData = await response.json() as UsageLimitErrorData
-    throw new UsageLimitExceededError(errorData)
+    const errorData = await response.json()
+    // Check if it's the new V6 feature limit error
+    if (errorData.error === 'feature_limit_exceeded') {
+      throw new FeatureLimitExceededError(errorData as FeatureLimitErrorData)
+    }
+    // Legacy usage limit error
+    throw new UsageLimitExceededError(errorData as UsageLimitErrorData)
   }
 
   if (!response.ok) {
@@ -817,6 +899,14 @@ export async function uploadBook(file: File, subjectId?: string): Promise<BookWi
     body: formData
   })
 
+  if (response.status === 403) {
+    const errorData = await response.json()
+    if (errorData.error === 'feature_limit_exceeded') {
+      throw new FeatureLimitExceededError(errorData as FeatureLimitErrorData)
+    }
+    throw new Error(errorData.error || 'Access denied')
+  }
+
   if (!response.ok) {
     const error = await response.json()
     throw new Error(error.error || 'Failed to upload book')
@@ -922,6 +1012,18 @@ export async function skipPriorKnowledge(loopId: string): Promise<{ nextPhase: L
 
   if (!response.ok) {
     throw new Error('Failed to skip prior knowledge')
+  }
+
+  return response.json()
+}
+
+export async function finishReading(loopId: string): Promise<{ nextPhase: LoopPhase; loop: LearningLoop }> {
+  const response = await fetchWithAuth(`${API_BASE}/loops/${loopId}/finish-reading`, {
+    method: 'POST'
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to finish reading phase')
   }
 
   return response.json()
@@ -1042,6 +1144,68 @@ export async function getKnowledgeInsights(): Promise<KnowledgeInsights> {
 
   if (!response.ok) {
     throw new Error('Failed to fetch knowledge insights')
+  }
+
+  return response.json()
+}
+
+// =====================
+// YouTube API
+// =====================
+
+export interface SpeakerSegment {
+  speaker: string
+  text: string
+  start: number
+  end: number
+}
+
+export interface YouTubeVideoInfo {
+  videoId: string
+  title: string
+  channel: string
+  duration: number | null
+  thumbnail: string
+  transcript: string
+  wordCount: number
+  transcriptionMethod: 'captions' | 'whisper' | 'assemblyai'
+  speakers?: SpeakerSegment[]
+}
+
+export interface YouTubeError {
+  error: 'INVALID_URL' | 'NO_CAPTIONS' | 'PRIVATE_VIDEO' | 'FETCH_ERROR' | 'VIDEO_TOO_LONG' | 'TRANSCRIPTION_FAILED'
+  message: string
+}
+
+export interface FetchYouTubeOptions {
+  identifySpeakers?: boolean
+}
+
+/**
+ * Check if a string looks like a YouTube URL
+ */
+export function isYouTubeUrl(text: string): boolean {
+  const trimmed = text.trim()
+  return (
+    trimmed.includes('youtube.com/') ||
+    trimmed.includes('youtu.be/') ||
+    trimmed.includes('m.youtube.com/')
+  )
+}
+
+/**
+ * Fetch YouTube video info including transcript
+ */
+export async function fetchYouTubeVideo(url: string, options: FetchYouTubeOptions = {}): Promise<YouTubeVideoInfo> {
+  const response = await fetchWithAuth(`${API_BASE}/youtube/fetch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, identifySpeakers: options.identifySpeakers })
+  })
+
+  if (!response.ok) {
+    const error = await response.json() as YouTubeError
+    throw new Error(error.message || 'Failed to fetch YouTube video')
   }
 
   return response.json()

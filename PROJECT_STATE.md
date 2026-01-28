@@ -1,10 +1,10 @@
-# Retention Trainer - Project State (MVP)
+# GRASP - Project State (MVP)
 
-> Last updated: January 27, 2026
+> Last updated: January 28, 2026
 
 ## Overview
 
-**Retention Trainer** is a voice-based comprehension testing application. Users paste text they've consumed (articles, meeting notes, podcasts, etc.), explain it back verbally, and receive AI-powered feedback on what they retained vs. missed.
+**GRASP** is a voice-based comprehension testing application. Users paste text they've consumed (articles, meeting notes, podcasts, etc.), explain it back verbally, and receive AI-powered feedback on what they retained vs. missed.
 
 ---
 
@@ -20,7 +20,8 @@
 ### Backend
 - **Runtime**: Node.js with Express 5.2
 - **Database**: Neon PostgreSQL (serverless)
-- **AI Services**: OpenAI APIs (Whisper, GPT-4o, TTS)
+- **AI Services**: OpenAI APIs (Whisper, GPT-4o, TTS), AssemblyAI (speaker diarization)
+- **External Tools**: yt-dlp (YouTube audio download)
 - **Auth Verification**: Clerk JWT
 
 ---
@@ -154,10 +155,25 @@
 - `article` - Written articles, blog posts
 - `meeting` - Meeting notes, transcripts
 - `podcast` - Podcast episode summaries
-- `video` - Video content summaries
+- `video` - Video content summaries (including YouTube)
 - `book` - Book chapters, excerpts
 - `lecture` - Educational lectures
 - `other` - Anything else
+
+### Loop Phases
+
+Learning loops progress through these phases:
+
+1. `prior_knowledge` - (Optional) Assess what user already knows
+2. `reading` - (Optional) User reads/watches content before explaining
+3. `first_attempt` - User explains content verbally
+4. `first_results` - Show evaluation results
+5. `learning` - Socratic dialogue to fill knowledge gaps
+6. `second_attempt` - Second explanation attempt
+7. `second_results` - Show improved results
+8. `simplify` - Explain like teaching a child
+9. `simplify_results` - Show simplification results
+10. `complete` - Loop mastered
 
 ---
 
@@ -227,6 +243,19 @@ All endpoints (except health) require Clerk JWT in `Authorization: Bearer <token
 | GET | `/concepts/:id` | Get single concept with related concepts |
 | GET | `/stats` | Get aggregate mastery statistics |
 | GET | `/insights` | Get actionable insights (needs review, weak spots, etc.) |
+
+### YouTube Routes (`/api/youtube`)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/fetch` | Fetch YouTube video transcript (with optional speaker identification) |
+
+### Loop Phase Transitions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/loops/:id/finish-reading` | Transition from reading phase to first_attempt |
+| POST | `/api/loops/:id/phase` | Update loop phase directly |
 
 ---
 
@@ -410,19 +439,25 @@ retension/
 │   │       │   ├── chat.ts       # Follow-up conversation endpoints
 │   │       │   ├── evaluate.ts   # GPT-4o evaluation endpoint
 │   │       │   ├── knowledge.ts  # Knowledge graph & insights endpoints
+│   │       │   ├── loops.ts      # Learning loop CRUD + phase transitions
 │   │       │   ├── sessions.ts   # Session CRUD endpoints
 │   │       │   ├── transcribe.ts # Whisper transcription endpoint
 │   │       │   ├── tts.ts        # OpenAI TTS endpoint
 │   │       │   ├── user.ts       # User preferences endpoints
-│   │       │   └── workspaces.ts # Workspace/subject CRUD
+│   │       │   ├── workspaces.ts # Workspace/subject CRUD
+│   │       │   └── youtube.ts    # YouTube video fetch endpoint
 │   │       ├── services/
-│   │       │   ├── knowledge.ts  # Knowledge graph updates on loop completion
+│   │       │   ├── assemblyai.ts # AssemblyAI speaker diarization
 │   │       │   ├── chat.ts       # Chat AI logic
 │   │       │   ├── epub.ts       # EPUB parsing service
+│   │       │   ├── featureGuard.ts # Usage limits and feature gating
+│   │       │   ├── knowledge.ts  # Knowledge graph updates on loop completion
 │   │       │   ├── llm.ts        # OpenAI client + evaluation logic
 │   │       │   ├── personas.ts   # Persona configurations
+│   │       │   ├── socratic.ts   # Socratic dialogue generation
 │   │       │   ├── tts.ts        # TTS generation logic
-│   │       │   └── whisper.ts    # Audio transcription logic
+│   │       │   ├── whisper.ts    # Audio transcription logic
+│   │       │   └── youtube.ts    # YouTube transcript fetching + yt-dlp
 │   │       ├── types/
 │   │       │   └── index.ts      # TypeScript type definitions
 │   │       └── index.ts          # Express app entry point
@@ -443,15 +478,19 @@ retension/
 │       │   │   ├── ChatPanel.tsx # Follow-up conversation UI
 │       │   │   ├── Confetti.tsx  # Celebration animation
 │       │   │   ├── FirstTimeUserRedirect.tsx # Redirects first-time users to /learn
+│       │   │   ├── FocusAreasDisplay.tsx # Prior knowledge focus areas
 │       │   │   ├── InProgressLoops.tsx # Hook + drawer for in-progress loops
 │       │   │   ├── Layout.tsx    # App shell with navigation
-│       │   │   ├── LoopProgress.tsx # Step progress indicator
+│       │   │   ├── LearningTour.tsx # Inline first-time hints
+│       │   │   ├── LoopProgress.tsx # Step progress indicator (includes reading phase)
 │       │   │   ├── LoopResultsPanel.tsx # Results display with animation
-│       │   │   ├── ProductTour.tsx # @reactour/tour onboarding journey
+│       │   │   ├── ReadingPhase.tsx # Reading content before explaining
 │       │   │   ├── ReaderPreview.tsx # Text preview with Markdown support
 │       │   │   ├── RecordingEncouragement.tsx # Recording tips & encouragements
 │       │   │   ├── SocraticChat.tsx # Fill gaps chat interface
-│       │   │   └── SpeechMetrics.tsx # Filler words/pace display
+│       │   │   ├── SpeechMetrics.tsx # Filler words/pace display
+│       │   │   ├── VideoWatchingPhase.tsx # Side-by-side video + transcript
+│       │   │   └── YouTubePreview.tsx # YouTube video preview card
 │       │   ├── context/
 │       │   │   ├── BooksContext.tsx      # Books state management
 │       │   │   ├── OnboardingContext.tsx # Onboarding/tour state
@@ -519,6 +558,7 @@ CLERK_SECRET_KEY=sk_...
 
 ### Core Features
 - [x] User authentication (Clerk)
+- [x] User upsert + preference writes (Neon client without unsafe SQL)
 - [x] Paste source text with word count
 - [x] Source type selection (article, meeting, podcast, etc.)
 - [x] Audio recording with timer (max 3 minutes)
@@ -565,6 +605,7 @@ CLERK_SECRET_KEY=sk_...
 - [x] Markdown-aware source material rendering with book-style typography
 - [x] Source material CTA moved to top of Socratic panel (prominent drawer toggle)
 - [x] Core learning flow entry animations (input, attempts, results, learning, simplify, complete)
+- [x] Reader keyboard shortcuts ignore focused form controls
 - [x] Improved loop progress stepper with even connector lines
 - [x] Score journey visualization on completion
 - [x] Mobile bottom navigation + responsive padding for small screens
@@ -578,6 +619,22 @@ CLERK_SECRET_KEY=sk_...
 - [x] In-progress loops moved to slide-out drawer (accessed via "Continue" button in header)
 - [x] Product tour using @reactour/tour for first-time user onboarding
 - [x] Tour highlights: text input, content type, precision, start button, preview, sidebar nav
+
+### YouTube Video Import (Jan 2026)
+
+- [x] Paste YouTube URL to auto-detect and fetch video
+- [x] Transcript extraction via YouTube captions API
+- [x] Fallback to Whisper transcription when captions unavailable
+- [x] Speaker diarization with AssemblyAI (optional checkbox)
+- [x] yt-dlp integration for audio download (with multi-client retry for SABR restrictions)
+- [x] Video preview card with thumbnail, title, channel, duration
+- [x] Transcript preview (collapsible)
+- [x] "Already watched" vs "Watch now" option
+- [x] Side-by-side video player + transcript view (VideoWatchingPhase component)
+- [x] Prior knowledge assessment option for videos
+- [x] Reading phase as proper backend phase (persists across refreshes)
+- [x] `/api/loops/:id/finish-reading` endpoint for phase transitions
+- [x] YouTube metadata stored with loops (videoId, channel, thumbnail, duration)
 
 ### EPUB Book Import (Jan 2026)
 

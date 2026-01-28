@@ -1,6 +1,9 @@
 import OpenAI from 'openai'
 import type { KeyConcept, SocraticMessage, SocraticResponse } from '../types/index.js'
 
+// Maximum number of messages to include in context (keeps token usage bounded)
+const MAX_HISTORY_MESSAGES = 6
+
 let openai: OpenAI | null = null
 
 function getOpenAI(): OpenAI {
@@ -25,7 +28,7 @@ export async function generateSocraticQuestion(
   }
 
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.2',
     messages: [
       {
         role: 'system',
@@ -64,7 +67,7 @@ ${stage === 'start'
 Generate ONLY the question, nothing else.`
       }
     ],
-    max_tokens: 150,
+    max_completion_tokens: 150,
     temperature: 0.7
   })
 
@@ -88,8 +91,11 @@ export async function generateSocraticResponse(
     }
   }
 
+  // Create a numbered list of remaining concepts for the LLM to select from
+  const conceptsList = remainingConcepts.map((c, i) => `${i + 1}. "${c}"`).join('\n')
+
   const response = await getOpenAI().chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5.2',
     messages: [
       {
         role: 'system',
@@ -103,17 +109,20 @@ ${sourceText.substring(0, 2000)}${sourceText.length > 2000 ? '...' : ''}
 KEY CONCEPTS FROM SOURCE:
 ${keyConcepts.map(c => `- ${c.concept}: ${c.explanation}`).join('\n')}
 
-CONCEPTS WE'RE WORKING ON:
-${remainingConcepts.map((c, i) => `${i + 1}. ${c}`).join('\n')}
+CONCEPTS WE'RE WORKING ON (numbered):
+${conceptsList}
 
 CONVERSATION SO FAR:
-${conversationHistory.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n')}
+${conversationHistory.length > MAX_HISTORY_MESSAGES
+  ? `[Earlier: ${conversationHistory.length - MAX_HISTORY_MESSAGES} messages exchanged]\n` +
+    conversationHistory.slice(-MAX_HISTORY_MESSAGES).map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n')
+  : conversationHistory.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n')}
 
 USER'S LATEST RESPONSE:
 "${userMessage}"
 
 Analyze their response and:
-1. Determine if they've demonstrated understanding of the FIRST remaining concept
+1. Determine if they've demonstrated understanding of ANY of the remaining concepts
 2. If yes, acknowledge briefly and move to next concept with a new question
 3. If partially, acknowledge what's right and probe deeper with a follow-up question
 4. If no, gently redirect with a simpler question or hint
@@ -123,15 +132,17 @@ Rules:
 - Be encouraging but don't accept vague or incorrect answers.
 - Keep responses under 3 sentences.
 
+IMPORTANT: If a concept is addressed, you MUST return the addressedConceptIndex as the number (1, 2, 3, etc.) from the list above.
+
 Respond in JSON format:
 {
   "message": "Your response (acknowledgment + question)",
   "addressed": true/false,
-  "currentConcept": "The concept you evaluated"
+  "addressedConceptIndex": number or null (the index from the numbered list if addressed, null otherwise)
 }`
       }
     ],
-    max_tokens: 300,
+    max_completion_tokens: 300,
     temperature: 0.7,
     response_format: { type: 'json_object' }
   })
@@ -148,11 +159,21 @@ Respond in JSON format:
     const parsed = JSON.parse(content) as {
       message: string
       addressed: boolean
-      currentConcept: string
+      addressedConceptIndex: number | null
     }
+
+    // Map the index back to the actual concept string
+    let addressedConcept: string | null = null
+    if (parsed.addressed && parsed.addressedConceptIndex !== null) {
+      const idx = parsed.addressedConceptIndex - 1 // Convert 1-indexed to 0-indexed
+      if (idx >= 0 && idx < remainingConcepts.length) {
+        addressedConcept = remainingConcepts[idx]
+      }
+    }
+
     return {
       message: parsed.message || "Tell me more about that.",
-      addressedConcept: parsed.addressed ? parsed.currentConcept : null
+      addressedConcept
     }
   } catch {
     return {

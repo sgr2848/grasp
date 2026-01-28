@@ -6,6 +6,7 @@ import { useIsFirstTimeUser } from '@/hooks/useIsFirstTimeUser'
 import { usePreferences } from '@/context/PreferencesContext'
 import { useWorkspace } from '@/context/WorkspaceContext'
 import { useTTS } from '@/context/TTSContext'
+import { LearningTourProvider } from '@/components/LearningTour'
 import {
   createLoop,
   getLoop,
@@ -17,7 +18,11 @@ import {
   getUserSubjects,
   submitPriorKnowledge,
   skipPriorKnowledge,
+  finishReading,
+  fetchYouTubeVideo,
+  isYouTubeUrl,
   UsageLimitExceededError,
+  FeatureLimitExceededError,
   FREE_TIER_DAILY_LIMIT,
   type LoopPhase,
   type LoopWithDetails,
@@ -28,6 +33,8 @@ import {
   type AttemptType,
   type Precision,
   type UsageStats,
+  type SoftCapWarning,
+  type YouTubeVideoInfo,
 } from '@/lib/api'
 import { personaConfig } from '@/lib/personas'
 import type { SampleContentData } from '@/lib/sampleContent'
@@ -48,8 +55,13 @@ import { RecordingEncouragement } from '@/components/RecordingEncouragement'
 import { Confetti } from '@/components/Confetti'
 import { AnimatedScoreRing } from '@/components/ui/AnimatedScoreRing'
 import { ReaderPreview } from '@/components/ReaderPreview'
+import { FocusAreasDisplay } from '@/components/FocusAreasDisplay'
+import { ReadingPhase } from '@/components/ReadingPhase'
+import { VideoWatchingPhase } from '@/components/VideoWatchingPhase'
+import { ConceptSummaryCard } from '@/components/ConceptSummaryCard'
+import { YouTubePreview } from '@/components/YouTubePreview'
 
-type UIPhase = 'input' | 'loading' | LoopPhase | 'error'
+type UIPhase = 'input' | 'youtube_preview' | 'loading' | 'focus_areas_display' | 'reading' | LoopPhase | 'error'
 
 interface LoopState {
   phase: UIPhase
@@ -99,7 +111,19 @@ export default function Learn() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [usageLimitReached, setUsageLimitReached] = useState<UsageStats | null>(null)
+  const [softCapWarning, setSoftCapWarning] = useState<SoftCapWarning | null>(null)
   const [loopsDrawerOpen, setLoopsDrawerOpen] = useState(false)
+
+  // YouTube state
+  const [youtubeVideo, setYoutubeVideo] = useState<YouTubeVideoInfo | null>(null)
+  const [isFetchingYouTube, setIsFetchingYouTube] = useState(false)
+  const [youtubeError, setYoutubeError] = useState<string | null>(null)
+  const [identifySpeakers, setIdentifySpeakers] = useState(false)
+
+  // Detect if input looks like a YouTube URL
+  const isYouTubeInput = useMemo(() => {
+    return sourceText.trim().length > 10 && isYouTubeUrl(sourceText.trim())
+  }, [sourceText])
 
   // Fetch in-progress loops for the drawer
   const { loops: inProgressLoops, loading: loopsLoading, count: loopsCount } = useInProgressLoops()
@@ -109,6 +133,7 @@ export default function Learn() {
 
   const autoStopFiredRef = useRef(false)
   const hasWelcomedRef = useRef(false)
+  const justCreatedLoopRef = useRef<string | null>(null)
 
   const wordCount = useMemo(() => sourceText.trim().split(/\s+/).filter(Boolean).length, [sourceText])
   const canStart = isLoaded && isSignedIn && wordCount >= 10
@@ -154,6 +179,12 @@ export default function Learn() {
   // Load existing loop
   useEffect(() => {
     if (!loopId || !isLoaded || !isSignedIn) return
+
+    // Skip if we just created this loop - we already have the data
+    if (justCreatedLoopRef.current === loopId) {
+      justCreatedLoopRef.current = null
+      return
+    }
 
     let cancelled = false
     setIsProcessing(true)
@@ -226,6 +257,8 @@ export default function Learn() {
         localStorage.removeItem(DRAFT_KEY)
       } catch {}
 
+      // Mark that we just created this loop to skip re-fetching
+      justCreatedLoopRef.current = loop.id
       navigate(`/learn/${loop.id}`, { replace: true })
 
       const startingPhase = loop.currentPhase
@@ -248,7 +281,145 @@ export default function Learn() {
     } finally {
       setIsProcessing(false)
     }
-  }, [canStart, title, sourceText, sourceType, selectedSubjectId, navigate, speak])
+  }, [canStart, title, sourceText, sourceType, selectedSubjectId, navigate, speak, precision])
+
+  // Fetch YouTube video
+  const handleFetchYouTube = useCallback(async () => {
+    const url = sourceText.trim()
+    if (!isYouTubeUrl(url)) return
+
+    setIsFetchingYouTube(true)
+    setYoutubeError(null)
+
+    try {
+      const video = await fetchYouTubeVideo(url, { identifySpeakers })
+      setYoutubeVideo(video)
+      setState((prev) => ({ ...prev, phase: 'youtube_preview' }))
+    } catch (err) {
+      setYoutubeError(toErrorMessage(err))
+    } finally {
+      setIsFetchingYouTube(false)
+    }
+  }, [sourceText, identifySpeakers])
+
+  // Start learning from YouTube video
+  const handleStartYouTubeLearning = useCallback(async (alreadyWatched: boolean) => {
+    if (!youtubeVideo) return
+
+    setIsProcessing(true)
+    setError(null)
+
+    try {
+      // For YouTube videos, start in reading phase if user hasn't watched yet
+      const initialPhase = alreadyWatched ? 'first_attempt' : 'reading'
+      const loop = await createLoop({
+        title: youtubeVideo.title,
+        sourceText: youtubeVideo.transcript,
+        sourceType: 'video',
+        subjectId: selectedSubjectId || undefined,
+        precision,
+        metadata: {
+          youtubeId: youtubeVideo.videoId,
+          youtubeUrl: `https://youtube.com/watch?v=${youtubeVideo.videoId}`,
+          channel: youtubeVideo.channel,
+          thumbnail: youtubeVideo.thumbnail,
+          videoDuration: youtubeVideo.duration,
+        },
+        initialPhase,
+      })
+
+      // Clear draft and YouTube state
+      try {
+        localStorage.removeItem(DRAFT_KEY)
+      } catch {}
+      setYoutubeVideo(null)
+      setSourceText('')
+
+      // Mark that we just created this loop to skip re-fetching
+      justCreatedLoopRef.current = loop.id
+      navigate(`/learn/${loop.id}`, { replace: true })
+
+      // Use the phase from the loop (set by backend)
+      setState({
+        phase: loop.currentPhase,
+        loop: {
+          ...loop,
+          attempts: [],
+          currentSocraticSession: null,
+          reviewSchedule: null,
+        },
+        currentAttempt: null,
+        socraticSession: null,
+        speechAnalysis: null,
+      })
+
+      if (alreadyWatched) {
+        void speak("Great! Now explain what you learned from the video in your own words.")
+      } else {
+        void speak("Take your time reading the transcript. Focus on the key ideas.")
+      }
+    } catch (err) {
+      setError(toErrorMessage(err))
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [youtubeVideo, selectedSubjectId, precision, navigate, speak])
+
+  // Start learning from YouTube video with prior knowledge assessment
+  const handleStartYouTubeLearningWithPrior = useCallback(async () => {
+    if (!youtubeVideo) return
+
+    setIsProcessing(true)
+    setError(null)
+
+    try {
+      const loop = await createLoop({
+        title: youtubeVideo.title,
+        sourceText: youtubeVideo.transcript,
+        sourceType: 'video',
+        subjectId: selectedSubjectId || undefined,
+        precision,
+        metadata: {
+          youtubeId: youtubeVideo.videoId,
+          youtubeUrl: `https://youtube.com/watch?v=${youtubeVideo.videoId}`,
+          channel: youtubeVideo.channel,
+          thumbnail: youtubeVideo.thumbnail,
+          videoDuration: youtubeVideo.duration,
+        },
+      })
+
+      // Clear draft and YouTube state
+      try {
+        localStorage.removeItem(DRAFT_KEY)
+      } catch {}
+      setYoutubeVideo(null)
+      setSourceText('')
+
+      // Mark that we just created this loop to skip re-fetching
+      justCreatedLoopRef.current = loop.id
+      navigate(`/learn/${loop.id}`, { replace: true })
+
+      // Start with prior knowledge assessment
+      setState({
+        phase: 'prior_knowledge',
+        loop: {
+          ...loop,
+          attempts: [],
+          currentSocraticSession: null,
+          reviewSchedule: null,
+        },
+        currentAttempt: null,
+        socraticSession: null,
+        speechAnalysis: null,
+      })
+
+      void speak("Before we begin, tell me what you already know about this topic from the video.")
+    } catch (err) {
+      setError(toErrorMessage(err))
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [youtubeVideo, selectedSubjectId, precision, navigate, speak])
 
   // Handle recording stop and evaluation
   const handleStopRecording = useCallback(async () => {
@@ -277,11 +448,11 @@ export default function Learn() {
 
         setState((prev) => ({
           ...prev,
-          phase: priorResult.nextPhase,
+          phase: 'focus_areas_display', // Show focus areas before reading
           loop: prev.loop
             ? {
                 ...prev.loop,
-                currentPhase: priorResult.nextPhase,
+                currentPhase: priorResult.nextPhase, // Backend phase is still first_attempt
                 priorKnowledgeTranscript: transcript,
                 priorKnowledgeAnalysis: priorResult.analysis,
                 priorKnowledgeScore: priorResult.analysis.confidenceScore,
@@ -289,9 +460,9 @@ export default function Learn() {
             : null,
         }))
 
-        // Speak feedback
+        // Speak feedback about what we found
         if (ttsEnabled && priorResult.analysis.feedback) {
-          await speak(priorResult.analysis.feedback + " Now, explain what you've learned in your own words.")
+          await speak(priorResult.analysis.feedback)
         }
 
         setIsProcessing(false)
@@ -313,6 +484,11 @@ export default function Learn() {
         persona: selectedPersona,
         speechMetrics: speechAnalysis as unknown as Record<string, unknown>,
       })
+
+      // Check for soft cap warning (Pro users approaching/exceeding limit)
+      if (attemptResult.warning) {
+        setSoftCapWarning(attemptResult.warning)
+      }
 
       // Update state
       setState((prev) => ({
@@ -341,7 +517,11 @@ export default function Learn() {
         ])
       }
     } catch (err) {
-      if (err instanceof UsageLimitExceededError) {
+      if (err instanceof FeatureLimitExceededError && err.feature === 'sessions') {
+        // V6: Monthly session limit for free tier
+        setError(err.message)
+      } else if (err instanceof UsageLimitExceededError) {
+        // Legacy: Daily limit
         setUsageLimitReached(err.usage)
       } else {
         setError(toErrorMessage(err))
@@ -399,6 +579,79 @@ export default function Learn() {
 
       if (ttsEnabled) {
         void speak("No problem! Let's get started. Explain what you've learned in your own words.")
+      }
+    } catch (err) {
+      setError(toErrorMessage(err))
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [state.loop, ttsEnabled, speak])
+
+  // Start prior knowledge assessment from first attempt (only if no attempts yet)
+  const handleStartPriorKnowledge = useCallback(() => {
+    if (!state.loop || state.loop.attempts.length > 0) return
+
+    setState((prev) => ({ ...prev, phase: 'prior_knowledge' }))
+    if (ttsEnabled) {
+      void speak("Before we begin, tell me what you already know about this topic.")
+    }
+  }, [state.loop, ttsEnabled, speak])
+
+  // Continue from focus areas display to reading phase
+  const handleContinueToReading = useCallback(async () => {
+    if (!state.loop) return
+
+    setIsProcessing(true)
+    setError(null)
+
+    try {
+      // Update backend phase to reading
+      await updateLoopPhase(state.loop.id, 'reading')
+
+      setState((prev) => ({
+        ...prev,
+        phase: 'reading',
+        loop: prev.loop
+          ? {
+              ...prev.loop,
+              currentPhase: 'reading',
+            }
+          : null,
+      }))
+
+      if (ttsEnabled) {
+        void speak("Take your time reading. Focus on the areas I mentioned.")
+      }
+    } catch (err) {
+      setError(toErrorMessage(err))
+    } finally {
+      setIsProcessing(false)
+    }
+  }, [state.loop, ttsEnabled, speak])
+
+  // Continue from reading phase to first attempt
+  const handleFinishedReading = useCallback(async () => {
+    if (!state.loop) return
+
+    setIsProcessing(true)
+    setError(null)
+
+    try {
+      const result = await finishReading(state.loop.id)
+
+      setState((prev) => ({
+        ...prev,
+        phase: result.nextPhase,
+        loop: prev.loop
+          ? {
+              ...prev.loop,
+              currentPhase: result.nextPhase,
+            }
+          : null,
+      }))
+
+      if (ttsEnabled) {
+        void speak("Now explain what you just read in your own words.")
       }
     } catch (err) {
       setError(toErrorMessage(err))
@@ -548,7 +801,28 @@ export default function Learn() {
     return state.loop.attempts[state.loop.attempts.length - 2]
   }, [state.loop])
 
+  // Get all covered concepts across all attempts and Socratic session
+  const allCoveredConcepts = useMemo(() => {
+    if (!state.loop) return []
+    const covered = new Set<string>()
+    state.loop.attempts.forEach((a) => {
+      a.analysis?.covered_points?.forEach((p) => covered.add(p))
+    })
+    if (state.socraticSession?.conceptsAddressed) {
+      state.socraticSession.conceptsAddressed.forEach((c) => covered.add(c))
+    }
+    return Array.from(covered)
+  }, [state.loop, state.socraticSession])
+
+  // Get missed concepts from the last attempt
+  const allMissedConcepts = useMemo(() => {
+    if (!state.loop || state.loop.attempts.length === 0) return []
+    const lastAttempt = state.loop.attempts[state.loop.attempts.length - 1]
+    return lastAttempt?.analysis?.missed_points ?? []
+  }, [state.loop])
+
   return (
+    <LearningTourProvider phase={state.phase}>
     <div className="mx-auto max-w-5xl space-y-6">
       {/* Header - different for first-time vs returning users */}
       {isFirstTimeUser && state.phase === 'input' ? (
@@ -652,6 +926,7 @@ export default function Learn() {
               />
             )}
             <textarea
+              data-tour="text-input"
               value={sourceText}
               onChange={(e) => setSourceText(e.target.value)}
               placeholder="Paste any text here - an article, meeting notes, book chapter, podcast transcript..."
@@ -742,50 +1017,113 @@ export default function Learn() {
 
             <div className={cn(
               "mt-6 flex flex-col gap-3",
-              wordCount >= 10 && "animate-in fade-in slide-in-from-bottom-2 duration-400 delay-200"
+              (wordCount >= 10 || isYouTubeInput) && "animate-in fade-in slide-in-from-bottom-2 duration-400 delay-200"
             )}>
-              <Button
-                size="lg"
-                onClick={handleSourceSubmit}
-                disabled={!canStart || isProcessing}
-                className={cn(
-                  "w-full sm:w-auto sm:px-12 transition-all duration-300",
-                  wordCount >= 10 && "shadow-lg hover:shadow-xl"
-                )}
-              >
-                {isProcessing ? (
-                  <>
-                    <Spinner className="border-white/30 border-t-white" />
-                    Preparing...
-                  </>
-                ) : wordCount < 10 ? (
-                  `Paste at least ${10 - wordCount} more words`
-                ) : (
-                  <>
-                    <svg className="h-5 w-5 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              {/* YouTube URL detected - show Fetch Video button */}
+              {isYouTubeInput ? (
+                <>
+                  <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                    <svg className="h-5 w-5 text-red-600 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
                     </svg>
-                    Start Learning
-                  </>
-                )}
-              </Button>
+                    <span className="text-sm font-medium text-red-700">YouTube video detected</span>
+                  </div>
+                  {/* Identify speakers option */}
+                  <label className="flex items-center gap-3 p-3 rounded-lg border border-neutral-200 cursor-pointer hover:bg-neutral-50 transition-colors animate-in fade-in slide-in-from-bottom-2 duration-300 delay-100">
+                    <input
+                      type="checkbox"
+                      checked={identifySpeakers}
+                      onChange={(e) => setIdentifySpeakers(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-neutral-900">Identify speakers</div>
+                      <div className="text-xs text-neutral-500">
+                        Label who's talking (useful for interviews, podcasts). Takes longer to process.
+                      </div>
+                    </div>
+                  </label>
+                  {youtubeError && (
+                    <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-600">
+                      {youtubeError}
+                    </div>
+                  )}
+                  <Button
+                    size="lg"
+                    onClick={handleFetchYouTube}
+                    disabled={isFetchingYouTube}
+                    className="w-full sm:w-auto sm:px-12 shadow-lg hover:shadow-xl bg-red-600 hover:bg-red-700"
+                  >
+                    {isFetchingYouTube ? (
+                      <>
+                        <Spinner className="border-white/30 border-t-white" />
+                        {identifySpeakers ? 'Transcribing with speakers...' : 'Fetching transcript...'}
+                      </>
+                    ) : (
+                      <>
+                        <svg className="h-5 w-5 mr-1" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                        Fetch Video
+                      </>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    data-tour="start-button"
+                    size="lg"
+                    onClick={handleSourceSubmit}
+                    disabled={!canStart || isProcessing}
+                    className={cn(
+                      "w-full sm:w-auto sm:px-12 transition-all duration-300",
+                      wordCount >= 10 && "shadow-lg hover:shadow-xl"
+                    )}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <Spinner className="border-white/30 border-t-white" />
+                        Preparing...
+                      </>
+                    ) : wordCount < 10 ? (
+                      `Paste at least ${10 - wordCount} more words`
+                    ) : (
+                      <>
+                        <svg className="h-5 w-5 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Start Learning
+                      </>
+                    )}
+                  </Button>
 
-              {wordCount < 10 && (
-                <div className="flex items-center justify-center gap-4 text-sm text-neutral-500 animate-fade-in">
-                  <span className="flex items-center gap-1.5">
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                    </svg>
-                    Record yourself explaining
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    See what you remembered
-                  </span>
-                </div>
+                  {wordCount < 10 && (
+                    <div className="flex flex-col items-center gap-3 text-sm text-neutral-500 animate-fade-in">
+                      <div className="flex items-center gap-4">
+                        <span className="flex items-center gap-1.5">
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                          </svg>
+                          Record yourself explaining
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          See what you remembered
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-xs text-neutral-400">
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                        </svg>
+                        <span>Or paste a YouTube URL</span>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </Card>
@@ -803,6 +1141,30 @@ export default function Learn() {
               <ReaderPreview text={sourceText} title={title} className="h-125 bg-white" />
             </Card>
           )}
+        </div>
+      )}
+
+      {/* YouTube Preview Phase */}
+      {state.phase === 'youtube_preview' && youtubeVideo && (
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <YouTubePreview
+            video={youtubeVideo}
+            onStartLearning={handleStartYouTubeLearning}
+            onStartPriorKnowledge={handleStartYouTubeLearningWithPrior}
+            isLoading={isProcessing}
+          />
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setYoutubeVideo(null)
+                setState((prev) => ({ ...prev, phase: 'input' }))
+              }}
+              className="text-sm text-neutral-500 hover:text-neutral-700 underline"
+            >
+              ← Back to input
+            </button>
+          </div>
         </div>
       )}
 
@@ -972,6 +1334,35 @@ export default function Learn() {
         </Card>
       )}
 
+      {/* Focus Areas Display Phase */}
+      {state.phase === 'focus_areas_display' && state.loop?.priorKnowledgeAnalysis && (
+        <FocusAreasDisplay
+          analysis={state.loop.priorKnowledgeAnalysis}
+          onContinue={handleContinueToReading}
+        />
+      )}
+
+      {/* Reading/Watching Phase */}
+      {state.phase === 'reading' && state.loop && (
+        state.loop.sourceType === 'video' && state.loop.metadata?.youtubeId ? (
+          <VideoWatchingPhase
+            videoId={state.loop.metadata.youtubeId}
+            transcript={state.loop.sourceText}
+            title={state.loop.title ?? 'Video'}
+            channel={state.loop.metadata.channel}
+            focusAreas={state.loop.priorKnowledgeAnalysis?.focusAreas ?? []}
+            onFinishedWatching={handleFinishedReading}
+          />
+        ) : (
+          <ReadingPhase
+            sourceText={state.loop.sourceText}
+            title={state.loop.title ?? undefined}
+            focusAreas={state.loop.priorKnowledgeAnalysis?.focusAreas ?? []}
+            onFinishedReading={handleFinishedReading}
+          />
+        )
+      )}
+
       {/* Recording Phase (First or Second Attempt) */}
       {(state.phase === 'first_attempt' || state.phase === 'second_attempt') && state.loop && (
         <Card className="p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1073,6 +1464,7 @@ export default function Learn() {
                   <div className="mt-3 flex flex-col gap-2">
                     {recorderState !== 'recording' ? (
                       <Button
+                        data-tour="record-button"
                         size="lg"
                         onClick={() => void startRecording()}
                         disabled={!isSignedIn || recorderState === 'requesting' || isProcessing}
@@ -1096,6 +1488,18 @@ export default function Learn() {
                         ) : (
                           'Stop & score'
                         )}
+                      </Button>
+                    )}
+
+                    {/* Option to assess prior knowledge (only on first attempt with no attempts yet) */}
+                    {state.phase === 'first_attempt' && state.loop?.attempts.length === 0 && recorderState !== 'recording' && (
+                      <Button
+                        size="lg"
+                        variant="ghost"
+                        onClick={handleStartPriorKnowledge}
+                        disabled={isProcessing}
+                      >
+                        Assess what I know first
                       </Button>
                     )}
                   </div>
@@ -1134,6 +1538,18 @@ export default function Learn() {
                   )}
                 </Button>
               )}
+
+              {/* Option to assess prior knowledge (only on first attempt with no attempts yet) */}
+              {state.phase === 'first_attempt' && state.loop?.attempts.length === 0 && recorderState !== 'recording' && (
+                <Button
+                  size="lg"
+                  variant="ghost"
+                  onClick={handleStartPriorKnowledge}
+                  disabled={isProcessing}
+                >
+                  Assess what I know first
+                </Button>
+              )}
             </div>
           </div>
         </Card>
@@ -1155,15 +1571,17 @@ export default function Learn() {
                 </div>
               </div>
             )}
-            <LoopResultsPanel
-              attempt={state.currentAttempt}
-              previousAttempt={previousAttempt}
-              phase={state.phase}
-              speechAnalysis={state.speechAnalysis}
-              onContinue={handleContinue}
-              onRetry={handleRetry}
-              onTestYourself={handleTestYourself}
-            />
+            <div data-tour="score-display">
+              <LoopResultsPanel
+                attempt={state.currentAttempt}
+                previousAttempt={previousAttempt}
+                phase={state.phase}
+                speechAnalysis={state.speechAnalysis}
+                onContinue={handleContinue}
+                onRetry={handleRetry}
+                onTestYourself={handleTestYourself}
+              />
+            </div>
           </div>
         )}
 
@@ -1182,13 +1600,15 @@ export default function Learn() {
               </div>
             </div>
           )}
-          <SocraticChat
-            session={state.socraticSession}
-            sourceText={state.loop.sourceText}
-            onSendMessage={handleSocraticMessage}
-            onSkip={handleSkipToSecondAttempt}
-            isLoading={isProcessing}
-          />
+          <div data-tour="socratic-chat">
+            <SocraticChat
+              session={state.socraticSession}
+              sourceText={state.loop.sourceText}
+              onSendMessage={handleSocraticMessage}
+              onSkip={handleSkipToSecondAttempt}
+              isLoading={isProcessing}
+            />
+          </div>
         </div>
       )}
 
@@ -1269,6 +1689,33 @@ export default function Learn() {
                 </div>
               </div>
 
+              {/* Concept summary */}
+              {(allCoveredConcepts.length > 0 || allMissedConcepts.length > 0) && (
+                <div className="mb-6">
+                  <ConceptSummaryCard
+                    coveredConcepts={allCoveredConcepts}
+                    missedConcepts={allMissedConcepts}
+                  />
+                </div>
+              )}
+
+              {/* First-time user hint about organization */}
+              {isFirstTimeUser && (
+                <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-left animate-in fade-in slide-in-from-bottom-2 duration-500 delay-500">
+                  <div className="flex items-start gap-3">
+                    <svg className="h-5 w-5 text-blue-500 mt-0.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                    </svg>
+                    <div>
+                      <div className="text-sm font-medium text-blue-700">Pro tip: Stay organized</div>
+                      <p className="mt-1 text-sm text-blue-600">
+                        Create workspaces and subjects in the sidebar to organize your learning by topic.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-col gap-2">
                 <Button size="lg" onClick={handleTestYourself}>
                   Test Yourself Now
@@ -1280,6 +1727,31 @@ export default function Learn() {
             </div>
           </Card>
         </>
+      )}
+
+      {/* Soft cap warning for Pro users */}
+      {softCapWarning && (
+        <Card className="border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-start gap-3">
+            <svg className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="flex-1">
+              <div className="text-sm font-medium text-amber-800">
+                {softCapWarning.warning === 'soft_cap_approaching' ? 'Approaching monthly limit' : 'Monthly budget exceeded'}
+              </div>
+              <p className="mt-1 text-sm text-amber-700">{softCapWarning.message}</p>
+            </div>
+            <button
+              onClick={() => setSoftCapWarning(null)}
+              className="text-amber-500 hover:text-amber-700"
+            >
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </Card>
       )}
 
       {/* Error State */}
@@ -1328,5 +1800,6 @@ export default function Learn() {
         </Card>
       )}
     </div>
+    </LearningTourProvider>
   )
 }

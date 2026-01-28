@@ -7,7 +7,7 @@ interface LoopProgressProps {
 }
 
 const STEPS = [
-  { id: 'prior', label: 'Prior', phases: ['prior_knowledge'] },
+  { id: 'prior', label: 'Prepare', phases: ['prior_knowledge', 'reading'] },
   { id: 'first', label: 'First Try', phases: ['first_attempt', 'first_results'] },
   { id: 'learn', label: 'Fill Gaps', phases: ['learning'] },
   { id: 'second', label: 'Second Try', phases: ['second_attempt', 'second_results'] },

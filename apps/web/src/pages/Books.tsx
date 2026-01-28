@@ -5,7 +5,10 @@ import {
   uploadBook,
   deleteBook,
   getUserSubjects,
+  getUserUsageV2,
+  FeatureLimitExceededError,
   type SubjectWithWorkspace,
+  type UsageStatsV2,
 } from "@/lib/api";
 import { useBooks } from "@/context/BooksContext";
 import { Badge } from "@/components/ui/Badge";
@@ -45,6 +48,8 @@ export default function BooksPage() {
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [usageStats, setUsageStats] = useState<UsageStatsV2 | null>(null);
+  const [bookLimitError, setBookLimitError] = useState<FeatureLimitExceededError | null>(null);
 
   const error = localError || booksError;
 
@@ -60,6 +65,13 @@ export default function BooksPage() {
   useEffect(() => {
     void loadSubjects();
   }, [loadSubjects]);
+
+  // Load usage stats
+  useEffect(() => {
+    getUserUsageV2()
+      .then(setUsageStats)
+      .catch(() => {}); // Silent fail - usage display is optional
+  }, []);
 
   // Refresh books when subject filter changes
   useEffect(() => {
@@ -79,7 +91,13 @@ export default function BooksPage() {
       await refreshBooks(selectedSubjectId ?? undefined);
       navigate(`/books/${book.id}`);
     } catch (err) {
-      setLocalError(err instanceof Error ? err.message : "Failed to upload book");
+      if (err instanceof FeatureLimitExceededError && err.feature === 'books') {
+        setBookLimitError(err);
+        setLocalError(null);
+      } else {
+        setLocalError(err instanceof Error ? err.message : "Failed to upload book");
+        setBookLimitError(null);
+      }
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) {
@@ -115,8 +133,7 @@ export default function BooksPage() {
           Books
         </h1>
         <p className="text-sm text-neutral-500">
-          Import EPUB books and practice chapters one at a time using the
-          Feynman technique.
+          Import EPUB books and practice chapters one at a time.
         </p>
       </div>
 
@@ -151,6 +168,56 @@ export default function BooksPage() {
               >
                 Dismiss
               </Button>
+            </div>
+          </Card>
+        )}
+
+        {/* Book limit error */}
+        {bookLimitError && (
+          <Card className="border-amber-200 bg-amber-50 p-4">
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start gap-3">
+                <svg className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-amber-800">{bookLimitError.message}</div>
+                  <p className="mt-1 text-xs text-amber-700">
+                    Upgrade to Pro for unlimited books, 50 sessions/month, and full knowledge graph.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => navigate('/settings#upgrade')}>
+                  Upgrade to Pro
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => setBookLimitError(null)}>
+                  Dismiss
+                </Button>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Usage stats for free tier */}
+        {usageStats && usageStats.tier === 'free' && !bookLimitError && (
+          <Card className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
+                <span className="font-medium">{usageStats.booksCount}</span>
+                <span className="text-neutral-500"> / {usageStats.limits.maxBooks} books used</span>
+              </div>
+              {usageStats.booksRemaining === 0 && (
+                <Button size="sm" variant="secondary" onClick={() => navigate('/settings#upgrade')}>
+                  Upgrade for more
+                </Button>
+              )}
+            </div>
+            <div className="mt-2 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full transition-all ${usageStats.booksRemaining === 0 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                style={{ width: `${Math.min(100, (usageStats.booksCount / usageStats.limits.maxBooks) * 100)}%` }}
+              />
             </div>
           </Card>
         )}

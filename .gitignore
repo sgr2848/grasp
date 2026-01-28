@@ -33,3 +33,6 @@ lerna-debug.log*
 
 # Drizzle
 drizzle
+
+# yt-dlp temp files
+*-player-script.js

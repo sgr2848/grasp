@@ -165,13 +165,13 @@ export default function WorkspacesPage() {
             {/* Workspaces list */}
             <div className="space-y-4">
               <Card className="p-4">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                   <input
                     type="text"
                     value={newWorkspaceName}
                     onChange={(e) => setNewWorkspaceName(e.target.value)}
                     placeholder="New workspace..."
-                    className="flex-1 border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/20"
+                    className="w-full flex-1 border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/20"
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') void handleCreateWorkspace()
                       if (e.key === 'Escape') setNewWorkspaceName('')
@@ -182,6 +182,7 @@ export default function WorkspacesPage() {
                     size="sm"
                     onClick={handleCreateWorkspace}
                     disabled={!newWorkspaceName.trim() || isCreatingWorkspace}
+                    className="w-full sm:w-auto"
                   >
                     {isCreatingWorkspace ? <Spinner size="sm" /> : 'Add'}
                   </Button>
@@ -246,27 +247,28 @@ export default function WorkspacesPage() {
                   </div>
 
                   <div className="mt-6">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={newSubjectName}
-                        onChange={(e) => setNewSubjectName(e.target.value)}
-                        placeholder="New subject..."
-                        className="flex-1 border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/20"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') void handleCreateSubject()
-                          if (e.key === 'Escape') setNewSubjectName('')
-                        }}
-                        disabled={isCreatingSubject}
-                      />
-                      <Button
-                        size="sm"
-                        onClick={handleCreateSubject}
-                        disabled={!newSubjectName.trim() || isCreatingSubject}
-                      >
-                        {isCreatingSubject ? <Spinner size="sm" /> : 'Add subject'}
-                      </Button>
-                    </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      type="text"
+                      value={newSubjectName}
+                      onChange={(e) => setNewSubjectName(e.target.value)}
+                      placeholder="New subject..."
+                      className="w-full flex-1 border border-neutral-200 bg-white px-3 py-2 text-sm text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-900/20"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') void handleCreateSubject()
+                        if (e.key === 'Escape') setNewSubjectName('')
+                      }}
+                      disabled={isCreatingSubject}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={handleCreateSubject}
+                      disabled={!newSubjectName.trim() || isCreatingSubject}
+                      className="w-full sm:w-auto"
+                    >
+                      {isCreatingSubject ? <Spinner size="sm" /> : 'Add subject'}
+                    </Button>
+                  </div>
                   </div>
 
                   <div className="mt-5 space-y-2">

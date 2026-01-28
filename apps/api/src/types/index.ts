@@ -31,8 +31,11 @@ export interface User {
   selectedPersona: Persona
   ttsEnabled: boolean
   isPaid: boolean
+  subscriptionTier: 'free' | 'pro'
   loopsUsedToday: number
   lastUsageResetAt: Date
+  loopsUsedThisMonth: number
+  usageResetMonth: Date
   createdAt: Date
 }
 
@@ -130,7 +133,7 @@ export interface UpdateSubjectInput {
 
 export type LoopStatus = 'in_progress' | 'mastered' | 'archived'
 export type Precision = 'essential' | 'balanced' | 'precise'
-export type LoopPhase = 'prior_knowledge' | 'first_attempt' | 'first_results' | 'learning' | 'second_attempt' | 'second_results' | 'simplify' | 'simplify_results' | 'complete'
+export type LoopPhase = 'prior_knowledge' | 'reading' | 'first_attempt' | 'first_results' | 'learning' | 'second_attempt' | 'second_results' | 'simplify' | 'simplify_results' | 'complete'
 export type AttemptType = 'full_explanation' | 'simplify_challenge' | 'quick_review'
 export type SocraticStatus = 'active' | 'completed' | 'abandoned'
 export type ReviewStatus = 'scheduled' | 'due' | 'completed' | 'paused'
@@ -167,6 +170,7 @@ export interface LearningLoop {
   priorKnowledgeTranscript: string | null
   priorKnowledgeAnalysis: PriorKnowledgeAnalysis | null
   priorKnowledgeScore: number | null
+  metadata: LoopMetadata | null
   createdAt: Date
   updatedAt: Date
 }
@@ -234,6 +238,18 @@ export interface ReviewSchedule {
   createdAt: Date
 }
 
+// YouTube metadata stored with video loops
+export interface YouTubeMetadata {
+  youtubeId: string
+  youtubeUrl: string
+  channel: string
+  thumbnail: string
+  videoDuration: number | null
+}
+
+// Generic metadata for loops (can extend with other source types)
+export type LoopMetadata = YouTubeMetadata | Record<string, unknown>
+
 // Request/Response types for v2
 export interface CreateLoopInput {
   subjectId?: string
@@ -241,6 +257,9 @@ export interface CreateLoopInput {
   sourceText: string
   sourceType: SourceType
   precision?: Precision
+  metadata?: LoopMetadata
+  /** Optional starting phase - defaults to 'first_attempt' */
+  initialPhase?: LoopPhase
 }
 
 export interface SubmitAttemptInput {
@@ -404,7 +423,7 @@ export interface KnowledgeGraphResponse {
 }
 
 // ============================================
-// V5: Usage Limits Types
+// V5: Usage Limits Types (Legacy - daily)
 // ============================================
 
 export const FREE_TIER_DAILY_LIMIT = 5
@@ -421,4 +440,60 @@ export interface UsageLimitError {
   error: 'usage_limit_exceeded'
   message: string
   usage: UsageStats
+}
+
+// ============================================
+// V6: Tiered Pricing Types
+// ============================================
+
+export type SubscriptionTier = 'free' | 'pro'
+
+export interface TierLimits {
+  maxBooks: number
+  maxSessionsPerMonth: number
+  maxConcepts: number
+  sessionLimitType: 'hard' | 'soft'
+}
+
+export const TIER_LIMITS: Record<SubscriptionTier, TierLimits> = {
+  free: {
+    maxBooks: 2,
+    maxSessionsPerMonth: 8,
+    maxConcepts: 50,
+    sessionLimitType: 'hard',
+  },
+  pro: {
+    maxBooks: Infinity,
+    maxSessionsPerMonth: 50,
+    maxConcepts: Infinity,
+    sessionLimitType: 'soft',
+  },
+}
+
+export interface UsageStatsV2 {
+  sessionsUsedThisMonth: number
+  booksCount: number
+  conceptsCount: number
+  tier: SubscriptionTier
+  limits: TierLimits
+  sessionsRemaining: number
+  booksRemaining: number
+  conceptsRemaining: number
+  sessionSoftCapWarning: boolean
+  monthResetAt: string
+}
+
+export interface FeatureLimitError {
+  error: 'feature_limit_exceeded'
+  feature: 'books' | 'sessions' | 'concepts'
+  message: string
+  usage: UsageStatsV2
+  upgradeUrl?: string
+}
+
+export interface SoftCapWarning {
+  warning: 'soft_cap_approaching' | 'soft_cap_exceeded'
+  feature: 'sessions'
+  message: string
+  usage: UsageStatsV2
 }

@@ -29,7 +29,7 @@ export default function Home() {
             </SignInButton>
           </SignedOut>
           <SignedIn>
-            <Link to="/app">
+            <Link to="/learn">
               <Button variant="secondary" size="sm">
                 Open app
               </Button>
@@ -56,7 +56,7 @@ export default function Home() {
                 <SignInButton mode="modal">
                   <Button size="lg">Sign in to start</Button>
                 </SignInButton>
-                <Link to="/app">
+                <Link to="/learn">
                   <Button variant="secondary" size="lg">
                     Explore the flow
                   </Button>
@@ -64,7 +64,7 @@ export default function Home() {
               </SignedOut>
 
               <SignedIn>
-                <Link to="/app">
+                <Link to="/learn">
                   <Button size="lg">Start training</Button>
                 </Link>
                 <Link to="/history">

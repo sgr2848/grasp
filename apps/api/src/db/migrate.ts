@@ -457,6 +457,15 @@ export async function runMigrations() {
     END $$;
   `
 
+  // Add metadata column to learning_loops for YouTube and other source-specific data
+  await sql`
+    DO $$
+    BEGIN
+      ALTER TABLE learning_loops ADD COLUMN IF NOT EXISTS metadata JSONB;
+    EXCEPTION WHEN others THEN NULL;
+    END $$;
+  `
+
   // ============================================
   // V5: Usage Limits
   // ============================================
@@ -469,6 +478,26 @@ export async function runMigrations() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS last_usage_reset_at TIMESTAMP DEFAULT NOW();
     EXCEPTION WHEN others THEN NULL;
     END $$;
+  `
+
+  // ============================================
+  // V6: Tiered Pricing & Monthly Usage
+  // ============================================
+
+  // Add monthly usage tracking and subscription tier columns
+  await sql`
+    DO $$
+    BEGIN
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS loops_used_this_month INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS usage_reset_month DATE DEFAULT DATE_TRUNC('month', NOW());
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS subscription_tier TEXT DEFAULT 'free';
+    EXCEPTION WHEN others THEN NULL;
+    END $$;
+  `
+
+  // Index for subscription tier queries
+  await sql`
+    CREATE INDEX IF NOT EXISTS idx_users_subscription_tier ON users(subscription_tier)
   `
 
   // V4: Knowledge Graph indexes

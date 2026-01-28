@@ -12,6 +12,7 @@ import chatRoutes from './routes/chat.js'
 import loopsRoutes from './routes/loops.js'
 import booksRoutes from './routes/books.js'
 import knowledgeRoutes from './routes/knowledge.js'
+import youtubeRoutes from './routes/youtube.js'
 
 dotenv.config()
 
@@ -60,6 +61,7 @@ app.use('/api/chat', chatRoutes)
 app.use('/api/loops', loopsRoutes)
 app.use('/api/books', booksRoutes)
 app.use('/api/knowledge', knowledgeRoutes)
+app.use('/api/youtube', youtubeRoutes)
 
 // Health check
 app.get('/health', (req, res) => {

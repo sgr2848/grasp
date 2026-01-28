@@ -6,6 +6,10 @@
     "apps/web",
     "apps/api"
   ],
+  "dependencies": {
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
   "scripts": {
     "dev": "npm --workspace apps/web run dev",
     "dev:web": "npm --workspace apps/web run dev",

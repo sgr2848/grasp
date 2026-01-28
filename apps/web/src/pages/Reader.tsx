@@ -170,6 +170,11 @@ export default function Reader() {
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, button, a, [contenteditable=\"true\"]')) {
+        return
+      }
       if (e.key === 'ArrowRight' || e.key === ' ') {
         e.preventDefault()
         goToNextPage()
@@ -417,7 +422,7 @@ export default function Reader() {
                       Finished Reading!
                     </h2>
                     <p className={cn("mb-8 max-w-md", themeStyles.muted)}>
-                      Ready to test your understanding? Start the learning phase to practice the Feynman technique.
+                      Ready to test your understanding? Explain what you just read and see how much stuck.
                     </p>
 
                     {/* Precision selector */}

@@ -48,8 +48,8 @@ export function EmptyHistory() {
           <Link to="/learn">
             <Button size="lg">Start Learning</Button>
           </Link>
-          <Link to="/app">
-            <Button variant="secondary" size="lg">Quick Test</Button>
+          <Link to="/learn">
+            <Button variant="secondary" size="lg">Explore Learn</Button>
           </Link>
         </div>
       </div>

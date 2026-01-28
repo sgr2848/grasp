@@ -1,7 +1,6 @@
 import { Router } from 'express'
 import { authMiddleware } from '../middleware/auth.js'
-import type { AuthRequest, CreateLoopInput, SubmitAttemptInput, LoopPhase, SubmitPriorKnowledgeInput, UsageStats, UsageLimitError } from '../types/index.js'
-import { FREE_TIER_DAILY_LIMIT } from '../types/index.js'
+import type { AuthRequest, CreateLoopInput, SubmitAttemptInput, LoopPhase, SubmitPriorKnowledgeInput } from '../types/index.js'
 import {
   learningLoopQueries,
   loopAttemptQueries,
@@ -13,13 +12,14 @@ import {
 import { extractConcepts, evaluateWithConcepts, assessPriorKnowledge } from '../services/llm.js'
 import { syncLoopConcepts, updateKnowledgeOnCompletion } from '../services/knowledge.js'
 import { generateSocraticQuestion, generateSocraticResponse } from '../services/socratic.js'
+import { canCreateSession } from '../services/featureGuard.js'
 
 const router = Router()
 
 // POST /api/loops - Create a new learning loop
 router.post('/', authMiddleware, async (req: AuthRequest, res) => {
   try {
-    const { title, sourceText, sourceType, subjectId, precision } = req.body as CreateLoopInput
+    const { title, sourceText, sourceType, subjectId, precision, metadata, initialPhase } = req.body as CreateLoopInput
 
     if (!sourceText || !sourceType) {
       res.status(400).json({ error: 'sourceText and sourceType are required' })
@@ -33,7 +33,9 @@ router.post('/', authMiddleware, async (req: AuthRequest, res) => {
       title,
       sourceText,
       sourceType,
-      precision
+      precision,
+      metadata,
+      initialPhase
     })
 
     // Extract concepts synchronously to ensure knowledge map is created
@@ -128,40 +130,14 @@ router.post('/:id/attempts', authMiddleware, async (req: AuthRequest, res) => {
       return
     }
 
-    // Check usage limits for free users
-    const user = await userQueries.getWithUsage(req.userId!)
-    if (!user) {
-      res.status(404).json({ error: 'User not found' })
+    // Check usage limits (monthly for V6 tier system)
+    const sessionCheck = await canCreateSession(req.userId!)
+    if (!sessionCheck.allowed) {
+      res.status(429).json(sessionCheck.error)
       return
     }
-
-    if (!user.isPaid && user.loopsUsedToday >= FREE_TIER_DAILY_LIMIT) {
-      // Calculate next reset time (midnight UTC)
-      const now = new Date()
-      const tomorrow = new Date(Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth(),
-        now.getUTCDate() + 1,
-        0, 0, 0, 0
-      ))
-
-      const usage: UsageStats = {
-        loopsUsedToday: user.loopsUsedToday,
-        dailyLimit: FREE_TIER_DAILY_LIMIT,
-        remainingLoops: 0,
-        isPaid: false,
-        resetAt: tomorrow.toISOString()
-      }
-
-      const errorResponse: UsageLimitError = {
-        error: 'usage_limit_exceeded',
-        message: `You've reached your daily limit of ${FREE_TIER_DAILY_LIMIT} learning loops. Upgrade to Pro for unlimited access.`,
-        usage
-      }
-
-      res.status(429).json(errorResponse)
-      return
-    }
+    // Store warning for response (if Pro user is approaching/exceeding soft cap)
+    const sessionWarning = sessionCheck.warning
 
     // Evaluate the explanation - use loop's precision setting
     let keyConcepts = loop.keyConcepts?.map(c => c.concept) || []
@@ -204,10 +180,8 @@ router.post('/:id/attempts', authMiddleware, async (req: AuthRequest, res) => {
       persona
     })
 
-    // Increment usage for free users
-    if (!user.isPaid) {
-      await userQueries.incrementUsage(req.userId!)
-    }
+    // Increment monthly usage for all users
+    await userQueries.incrementMonthlyUsage(req.userId!)
 
     // Determine next phase
     let nextPhase: LoopPhase = loop.currentPhase
@@ -234,11 +208,22 @@ router.post('/:id/attempts', authMiddleware, async (req: AuthRequest, res) => {
 
     await learningLoopQueries.updatePhase(loopId, nextPhase)
 
-    res.json({
+    // Include soft cap warning in response if applicable
+    const response: {
+      attempt: typeof attempt
+      nextPhase: LoopPhase
+      evaluation: typeof evaluation
+      warning?: typeof sessionWarning
+    } = {
       attempt,
       nextPhase,
       evaluation
-    })
+    }
+    if (sessionWarning) {
+      response.warning = sessionWarning
+    }
+
+    res.json(response)
   } catch (error) {
     console.error('Submit attempt error:', error)
     res.status(500).json({ error: 'Failed to submit attempt' })
@@ -553,6 +538,41 @@ router.post('/:id/skip-prior-knowledge', authMiddleware, async (req: AuthRequest
   } catch (error) {
     console.error('Skip prior knowledge error:', error)
     res.status(500).json({ error: 'Failed to skip prior knowledge' })
+  }
+})
+
+// POST /api/loops/:id/finish-reading - Finish reading phase and move to first_attempt
+router.post('/:id/finish-reading', authMiddleware, async (req: AuthRequest, res) => {
+  try {
+    const loopId = req.params.id as string
+
+    // Get the loop
+    const loop = await learningLoopQueries.findById(loopId)
+    if (!loop) {
+      res.status(404).json({ error: 'Loop not found' })
+      return
+    }
+    if (loop.userId !== req.userId) {
+      res.status(403).json({ error: 'Access denied' })
+      return
+    }
+
+    // Only allow finishing reading from the reading phase
+    if (loop.currentPhase !== 'reading') {
+      res.status(400).json({ error: `Cannot finish reading from phase: ${loop.currentPhase}` })
+      return
+    }
+
+    // Move to first_attempt
+    const updatedLoop = await learningLoopQueries.updatePhase(loopId, 'first_attempt')
+
+    res.json({
+      nextPhase: 'first_attempt' as LoopPhase,
+      loop: updatedLoop
+    })
+  } catch (error) {
+    console.error('Finish reading error:', error)
+    res.status(500).json({ error: 'Failed to finish reading phase' })
   }
 })
 

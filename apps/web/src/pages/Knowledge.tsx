@@ -5,10 +5,12 @@ import ForceGraph2D, { type ForceGraphMethods } from 'react-force-graph-2d'
 import {
   getKnowledgeGraph,
   getKnowledgeInsights,
+  getUserUsageV2,
   type KnowledgeGraphResponse,
   type KnowledgeInsights,
   type InsightConcept,
   type CrossConnection,
+  type UsageStatsV2,
 } from '@/lib/api'
 import { Card } from '@/components/ui/Card'
 import { Spinner } from '@/components/ui/Spinner'
@@ -83,6 +85,7 @@ export default function Knowledge() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showGraph, setShowGraph] = useState(false)
+  const [usageStats, setUsageStats] = useState<UsageStatsV2 | null>(null)
   const graphRef = useRef<ForceGraphMethods | undefined>(undefined)
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 800, height: 400 })
@@ -92,9 +95,13 @@ export default function Knowledge() {
     if (!containerRef.current) return
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
+        const width = entry.contentRect.width
+        const isMobile = width < 640
         setDimensions({
-          width: entry.contentRect.width,
-          height: Math.max(350, Math.min(500, entry.contentRect.width * 0.5)),
+          width,
+          height: isMobile
+            ? Math.max(260, Math.min(360, width * 0.6))
+            : Math.max(350, Math.min(500, width * 0.5)),
         })
       }
     })
@@ -124,12 +131,14 @@ export default function Knowledge() {
     try {
       setIsLoading(true)
       setError(null)
-      const [insightsData, graphData] = await Promise.all([
+      const [insightsData, graphData, usageData] = await Promise.all([
         getKnowledgeInsights(),
         getKnowledgeGraph(),
+        getUserUsageV2().catch(() => null), // Silent fail for usage stats
       ])
       setInsights(insightsData)
       setGraph(graphData)
+      setUsageStats(usageData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load knowledge data')
     } finally {
@@ -249,6 +258,45 @@ export default function Knowledge() {
               </div>
             </Card>
           </div>
+
+          {/* Concept limit for free tier */}
+          {usageStats && usageStats.tier === 'free' && (
+            <Card className={cn(
+              'p-4',
+              usageStats.conceptsRemaining === 0 && 'border-amber-200 bg-amber-50'
+            )}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-neutral-900">Knowledge Graph Capacity</div>
+                  <p className="text-xs text-neutral-500">
+                    {usageStats.conceptsCount} / {usageStats.limits.maxConcepts} concepts tracked
+                  </p>
+                </div>
+                {usageStats.conceptsRemaining === 0 && (
+                  <Link
+                    to="/settings#upgrade"
+                    className="shrink-0 rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-800"
+                  >
+                    Upgrade
+                  </Link>
+                )}
+              </div>
+              <div className="mt-2 h-1.5 bg-neutral-100 rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    'h-full transition-all',
+                    usageStats.conceptsRemaining === 0 ? 'bg-amber-500' : 'bg-purple-500'
+                  )}
+                  style={{ width: `${Math.min(100, (usageStats.conceptsCount / usageStats.limits.maxConcepts) * 100)}%` }}
+                />
+              </div>
+              {usageStats.conceptsRemaining === 0 && (
+                <p className="mt-2 text-xs text-amber-700">
+                  New concepts won't be tracked until you upgrade to Pro.
+                </p>
+              )}
+            </Card>
+          )}
 
           {/* Empty state */}
           {stats.totalConcepts === 0 ? (

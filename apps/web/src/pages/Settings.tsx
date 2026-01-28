@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { SignedIn, SignedOut, SignInButton } from '@clerk/clerk-react'
 import { usePreferences } from '@/context/PreferencesContext'
 import { useTTS } from '@/context/TTSContext'
@@ -7,7 +8,7 @@ import { Card } from '@/components/ui/Card'
 import { Switch } from '@/components/ui/Switch'
 import { cn } from '@/lib/cn'
 import { personaConfig, type Persona } from '@/lib/personas'
-import type { TTSVoice } from '@/lib/api'
+import { getUserUsageV2, type TTSVoice, type UsageStatsV2 } from '@/lib/api'
 import type { TTSProvider } from '@/lib/tts'
 
 const TTS_VOICES: { id: TTSVoice; label: string }[] = [
@@ -23,6 +24,14 @@ export default function Settings() {
   const { selectedPersona, ttsEnabled, isPaid, error, clearError, setSelectedPersona, setTTSEnabled } = usePreferences()
   const { provider, voice, setProvider, setVoice } = useTTS()
   const personaOrder: Persona[] = ['coach', 'professor', 'sergeant', 'hype', 'chill']
+  const [usageStats, setUsageStats] = useState<UsageStatsV2 | null>(null)
+
+  // Load usage stats
+  useEffect(() => {
+    getUserUsageV2()
+      .then(setUsageStats)
+      .catch(() => {}) // Silent fail
+  }, [])
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -172,6 +181,77 @@ export default function Settings() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </Card>
+
+      {/* Subscription Section */}
+      <Card id="upgrade" className="p-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-sm font-medium text-neutral-900">Subscription</div>
+            <p className="mt-1 text-sm text-neutral-500">
+              {usageStats?.tier === 'pro'
+                ? 'You have full access to all features.'
+                : 'Upgrade to unlock unlimited learning.'}
+            </p>
+          </div>
+          <Badge variant={usageStats?.tier === 'pro' ? 'success' : 'neutral'}>
+            {usageStats?.tier === 'pro' ? 'Pro' : 'Free'}
+          </Badge>
+        </div>
+
+        {usageStats && (
+          <div className="mt-5 grid gap-4 sm:grid-cols-3">
+            <div className="p-3 bg-neutral-50 rounded-lg">
+              <div className="text-xs text-neutral-500">Sessions this month</div>
+              <div className="mt-1 text-lg font-bold">
+                {usageStats.sessionsUsedThisMonth}
+                <span className="text-sm font-normal text-neutral-400">
+                  /{usageStats.limits.maxSessionsPerMonth === Infinity ? '∞' : usageStats.limits.maxSessionsPerMonth}
+                </span>
+              </div>
+            </div>
+            <div className="p-3 bg-neutral-50 rounded-lg">
+              <div className="text-xs text-neutral-500">Books</div>
+              <div className="mt-1 text-lg font-bold">
+                {usageStats.booksCount}
+                <span className="text-sm font-normal text-neutral-400">
+                  /{usageStats.limits.maxBooks === Infinity ? '∞' : usageStats.limits.maxBooks}
+                </span>
+              </div>
+            </div>
+            <div className="p-3 bg-neutral-50 rounded-lg">
+              <div className="text-xs text-neutral-500">Concepts</div>
+              <div className="mt-1 text-lg font-bold">
+                {usageStats.conceptsCount}
+                <span className="text-sm font-normal text-neutral-400">
+                  /{usageStats.limits.maxConcepts === Infinity ? '∞' : usageStats.limits.maxConcepts}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {usageStats?.tier === 'free' && (
+          <div className="mt-5 p-4 border border-emerald-200 bg-emerald-50 rounded-lg">
+            <div className="font-medium text-emerald-900">Upgrade to Pro</div>
+            <ul className="mt-2 text-sm text-emerald-700 space-y-1">
+              <li>• Unlimited books</li>
+              <li>• 50 sessions/month (soft cap)</li>
+              <li>• Full knowledge graph (unlimited concepts)</li>
+            </ul>
+            <div className="mt-4 flex gap-2">
+              <Button disabled title="Coming soon">
+                $6/month
+              </Button>
+              <Button variant="secondary" disabled title="Coming soon">
+                $60/year (save 17%)
+              </Button>
+            </div>
+            <p className="mt-2 text-xs text-emerald-600">
+              Payment integration coming soon. Contact support for early access.
+            </p>
           </div>
         )}
       </Card>

@@ -24,7 +24,7 @@ export function EmptyLearn() {
         <h3 className="text-lg font-semibold text-neutral-900">Ready to Learn Something New?</h3>
 
         <p className="mt-3 text-sm text-neutral-500">
-          The Feynman method helps you truly understand what you read. Here's how it works:
+          The best way to remember something is to explain it. Here's how it works:
         </p>
 
         <div className="mt-6 grid gap-3 text-left">
