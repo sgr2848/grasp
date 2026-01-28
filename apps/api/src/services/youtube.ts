@@ -1,5 +1,4 @@
 import { YoutubeTranscript } from 'youtube-transcript'
-import ytdl from '@distube/ytdl-core'
 import fs from 'fs'
 import path from 'path'
 import { transcribeAudio } from './whisper.js'
@@ -142,47 +141,11 @@ async function fetchCaptionTranscript(videoId: string): Promise<string | null> {
 }
 
 /**
- * Download audio from YouTube video
- */
-async function downloadYouTubeAudio(videoId: string): Promise<{ audioBuffer: Buffer; duration: number }> {
-  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`
-
-  console.log('[YouTube] Downloading audio...')
-
-  // Get video info first to check duration
-  const info = await ytdl.getInfo(videoUrl)
-  const durationSeconds = parseInt(info.videoDetails.lengthSeconds, 10)
-
-  if (durationSeconds > MAX_WHISPER_DURATION_SECONDS) {
-    throw new Error(`VIDEO_TOO_LONG:${durationSeconds}`)
-  }
-
-  // Download audio only (lowest quality to keep file small)
-  const audioStream = ytdl(videoUrl, {
-    filter: 'audioonly',
-    quality: 'lowestaudio',
-  })
-
-  // Collect audio chunks into buffer
-  const chunks: Buffer[] = []
-
-  await new Promise<void>((resolve, reject) => {
-    audioStream.on('data', (chunk: Buffer) => chunks.push(chunk))
-    audioStream.on('end', () => resolve())
-    audioStream.on('error', reject)
-  })
-
-  const audioBuffer = Buffer.concat(chunks)
-  console.log(`[YouTube] Downloaded ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB of audio`)
-
-  return { audioBuffer, duration: durationSeconds }
-}
-
-/**
  * Download audio from YouTube and transcribe with Whisper
  */
 async function transcribeWithWhisper(videoId: string): Promise<{ transcript: string; duration: number }> {
-  const { audioBuffer, duration } = await downloadYouTubeAudio(videoId)
+  // Use smart download (Cobalt first, then yt-dlp fallback)
+  const { audioBuffer, duration } = await downloadYouTubeAudioSmart(videoId)
 
   // Check file size (Whisper limit is 25MB)
   if (audioBuffer.length > 25 * 1024 * 1024) {
@@ -191,13 +154,79 @@ async function transcribeWithWhisper(videoId: string): Promise<{ transcript: str
 
   // Transcribe with Whisper
   console.log('[YouTube] Transcribing with Whisper...')
-  const transcript = await transcribeAudio(audioBuffer, `youtube-${videoId}.webm`)
+  const transcript = await transcribeAudio(audioBuffer, `youtube-${videoId}.mp3`)
 
   return { transcript, duration }
 }
 
 /**
- * Download audio from YouTube using yt-dlp (more reliable than ytdl-core)
+ * Download audio from YouTube using Cobalt API
+ * More reliable than yt-dlp on cloud servers (no bot detection issues)
+ */
+async function downloadAudioWithCobalt(videoId: string): Promise<{ audioBuffer: Buffer; duration: number }> {
+  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`
+
+  console.log('[YouTube] Downloading audio with Cobalt API...')
+
+  // Request audio download from Cobalt
+  const cobaltResponse = await fetch('https://api.cobalt.tools/api/json', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    },
+    body: JSON.stringify({
+      url: videoUrl,
+      isAudioOnly: true,
+      aFormat: 'mp3',
+      filenamePattern: 'basic',
+    }),
+  })
+
+  if (!cobaltResponse.ok) {
+    const errorText = await cobaltResponse.text()
+    console.error('[YouTube] Cobalt API error:', errorText)
+    throw new Error(`Cobalt API returned ${cobaltResponse.status}`)
+  }
+
+  const cobaltData = await cobaltResponse.json() as {
+    status: string
+    url?: string
+    text?: string
+  }
+
+  if (cobaltData.status === 'error') {
+    throw new Error(cobaltData.text || 'Cobalt API error')
+  }
+
+  if (cobaltData.status === 'rate-limit') {
+    throw new Error('Cobalt API rate limited, please try again later')
+  }
+
+  if (!cobaltData.url) {
+    throw new Error('Cobalt API did not return a download URL')
+  }
+
+  console.log('[YouTube] Got Cobalt download URL, fetching audio...')
+
+  // Download the audio file
+  const audioResponse = await fetch(cobaltData.url)
+  if (!audioResponse.ok) {
+    throw new Error(`Failed to download audio: ${audioResponse.status}`)
+  }
+
+  const audioArrayBuffer = await audioResponse.arrayBuffer()
+  const audioBuffer = Buffer.from(audioArrayBuffer)
+
+  console.log(`[YouTube] Downloaded ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB of audio via Cobalt`)
+
+  // Cobalt doesn't return duration, estimate from file size or return 0
+  // We'll get actual duration from AssemblyAI or check separately
+  return { audioBuffer, duration: 0 }
+}
+
+/**
+ * Download audio from YouTube using yt-dlp (fallback)
  * Uses workarounds for YouTube's SABR streaming restrictions
  * Tries multiple player clients if the first one fails
  */
@@ -283,14 +312,29 @@ async function downloadAudioWithYtDlp(videoId: string): Promise<{ audioBuffer: B
 }
 
 /**
+ * Download audio - tries Cobalt first, falls back to yt-dlp
+ */
+async function downloadYouTubeAudioSmart(videoId: string): Promise<{ audioBuffer: Buffer; duration: number }> {
+  // Try Cobalt first (works better on cloud servers)
+  try {
+    return await downloadAudioWithCobalt(videoId)
+  } catch (cobaltError) {
+    console.log('[YouTube] Cobalt failed, trying yt-dlp:', cobaltError instanceof Error ? cobaltError.message : cobaltError)
+
+    // Fall back to yt-dlp
+    return await downloadAudioWithYtDlp(videoId)
+  }
+}
+
+/**
  * Transcribe YouTube video with AssemblyAI (includes speaker diarization)
- * Uses yt-dlp to download audio, then uploads to AssemblyAI
+ * Uses Cobalt/yt-dlp to download audio, then uploads to AssemblyAI
  */
 async function transcribeWithAssemblyAI(videoId: string): Promise<{ transcript: string; duration: number; speakers: SpeakerSegment[] }> {
   console.log('[YouTube] Transcribing with AssemblyAI (speaker diarization)...')
 
-  // Download audio using yt-dlp
-  const { audioBuffer, duration } = await downloadAudioWithYtDlp(videoId)
+  // Download audio using Cobalt (primary) or yt-dlp (fallback)
+  const { audioBuffer, duration } = await downloadYouTubeAudioSmart(videoId)
 
   // Upload to AssemblyAI and transcribe with diarization
   const result = await transcribeBufferWithDiarization(audioBuffer)
