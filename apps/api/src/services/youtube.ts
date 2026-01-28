@@ -6,8 +6,9 @@ import path from 'path'
 import { transcribeAudio } from './whisper.js'
 import { transcribeBufferWithDiarization, SpeakerSegment } from './assemblyai.js'
 
-// Use system-installed yt-dlp (from homebrew) instead of bundled binary
-const ytDlp = createYtDlp('/opt/homebrew/bin/yt-dlp')
+// Use YT_DLP_PATH env var if set, otherwise let yt-dlp-exec use its bundled binary
+const ytDlpPath = process.env.YT_DLP_PATH
+const ytDlp = ytDlpPath ? createYtDlp(ytDlpPath) : createYtDlp()
 
 export interface YouTubeVideoInfo {
   videoId: string
