@@ -12,7 +12,6 @@ import chatRoutes from './routes/chat.js'
 import loopsRoutes from './routes/loops.js'
 import booksRoutes from './routes/books.js'
 import knowledgeRoutes from './routes/knowledge.js'
-import youtubeRoutes from './routes/youtube.js'
 
 dotenv.config()
 
@@ -61,7 +60,16 @@ app.use('/api/chat', chatRoutes)
 app.use('/api/loops', loopsRoutes)
 app.use('/api/books', booksRoutes)
 app.use('/api/knowledge', knowledgeRoutes)
-app.use('/api/youtube', youtubeRoutes)
+
+// Dynamic import for youtube routes to catch any loading errors
+import('./routes/youtube.js')
+  .then(({ default: youtubeRoutes }) => {
+    app.use('/api/youtube', youtubeRoutes)
+    console.log('[Routes] YouTube routes loaded successfully')
+  })
+  .catch((error) => {
+    console.error('[Routes] Failed to load YouTube routes:', error)
+  })
 
 // Health check
 app.get('/health', (req, res) => {
