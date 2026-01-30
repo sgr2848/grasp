@@ -155,47 +155,55 @@ async function fetchVideoMetadata(videoId: string): Promise<{ title: string; cha
 
 /**
  * Fetch and clean transcript from YouTube captions
- * Tries multiple language codes if the default fails
+ * Tries multiple approaches to handle different caption configurations
  */
 async function fetchCaptionTranscript(videoId: string): Promise<string | null> {
-  // Try multiple language options in order of preference
-  const languageCodes = ['en', 'en-US', 'en-GB', undefined] // undefined = auto-detect
+  // Strategy 1: Try without specifying language (auto-detect)
+  try {
+    console.log(`[YouTube] Attempting to fetch captions (auto-detect) for video: ${videoId}`)
+    const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId)
 
-  for (const lang of languageCodes) {
-    try {
-      console.log(`[YouTube] Attempting to fetch captions for video: ${videoId}${lang ? ` (lang: ${lang})` : ' (auto-detect)'}`)
-
-      const transcriptItems = lang
-        ? await YoutubeTranscript.fetchTranscript(videoId, { lang })
-        : await YoutubeTranscript.fetchTranscript(videoId)
-
-      if (!transcriptItems || transcriptItems.length === 0) {
-        console.log(`[YouTube] No transcript items returned${lang ? ` for ${lang}` : ''}`)
-        continue // Try next language
-      }
-
-      console.log(`[YouTube] Found ${transcriptItems.length} caption segments`)
-
-      // Join all text segments, cleaning up spacing
+    if (transcriptItems && transcriptItems.length > 0) {
       const transcript = transcriptItems
         .map(item => item.text)
         .join(' ')
         .replace(/\s+/g, ' ')
         .trim()
 
-      if (transcript.length < 50) {
-        console.log('[YouTube] Transcript too short:', transcript.length, 'characters')
-        continue // Try next language
+      if (transcript.length >= 50) {
+        console.log(`[YouTube] Successfully fetched ${transcript.length} characters from captions (auto-detect)`)
+        return transcript
       }
+    }
+  } catch (autoError) {
+    // Continue to next strategy
+    console.log('[YouTube] Auto-detect failed, trying specific languages')
+  }
 
-      console.log(`[YouTube] Successfully fetched ${transcript.length} characters from captions`)
-      return transcript
+  // Strategy 2: Try specific English variants
+  const languageCodes = ['en', 'en-US', 'en-GB']
+
+  for (const lang of languageCodes) {
+    try {
+      console.log(`[YouTube] Attempting to fetch captions for video: ${videoId} (lang: ${lang})`)
+      const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId, { lang })
+
+      if (transcriptItems && transcriptItems.length > 0) {
+        const transcript = transcriptItems
+          .map(item => item.text)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+
+        if (transcript.length >= 50) {
+          console.log(`[YouTube] Successfully fetched ${transcript.length} characters from captions (${lang})`)
+          return transcript
+        }
+      }
     } catch (error) {
-      console.error(`[YouTube] Caption fetch failed${lang ? ` for ${lang}` : ''}:`, {
-        videoId,
-        error: error instanceof Error ? error.message : String(error)
-      })
-      // Continue to next language option
+      const errorMsg = error instanceof Error ? error.message : String(error)
+      console.log(`[YouTube] ${lang} failed: ${errorMsg}`)
+      // Continue to next language
     }
   }
 
