@@ -7,6 +7,41 @@ import { transcribeBufferWithDiarization, SpeakerSegment } from './assemblyai.js
 // Dynamic import of yt-dlp-exec to prevent route registration failures
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let ytDlpInstance: any = null
+let cookiesFilePath: string | null = null
+
+/**
+ * Initialize YouTube cookies from environment variable
+ * Expects YOUTUBE_COOKIES to be base64 encoded cookies.txt content
+ */
+function initializeCookies() {
+  if (cookiesFilePath) return cookiesFilePath // Already initialized
+
+  const cookiesBase64 = process.env.YOUTUBE_COOKIES
+  if (!cookiesBase64) {
+    console.log('[YouTube] No YOUTUBE_COOKIES env var found, proceeding without cookies')
+    return null
+  }
+
+  try {
+    // Decode base64 cookies
+    const cookiesContent = Buffer.from(cookiesBase64, 'base64').toString('utf-8')
+
+    // Write to temp file
+    const tempDir = path.join(process.cwd(), 'uploads')
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true })
+    }
+
+    cookiesFilePath = path.join(tempDir, 'youtube-cookies.txt')
+    fs.writeFileSync(cookiesFilePath, cookiesContent)
+
+    console.log('[YouTube] Cookies loaded successfully from environment variable')
+    return cookiesFilePath
+  } catch (error) {
+    console.error('[YouTube] Failed to initialize cookies:', error)
+    return null
+  }
+}
 
 async function getYtDlp() {
   if (!ytDlpInstance) {
@@ -16,6 +51,9 @@ async function getYtDlp() {
       const ytDlpPath = process.env.YT_DLP_PATH || 'yt-dlp'
       ytDlpInstance = create(ytDlpPath)
       console.log(`[YouTube] Using yt-dlp at: ${ytDlpPath}`)
+
+      // Initialize cookies on first use
+      initializeCookies()
     } catch (error) {
       console.error('[YouTube] Failed to load yt-dlp-exec:', error)
       throw new Error('yt-dlp is not available on this server')
@@ -144,7 +182,7 @@ async function fetchCaptionTranscript(videoId: string): Promise<string | null> {
  * Download audio from YouTube and transcribe with Whisper
  */
 async function transcribeWithWhisper(videoId: string): Promise<{ transcript: string; duration: number }> {
-  // Use smart download (Cobalt first, then yt-dlp fallback)
+  // Use smart download (RapidAPI first, then yt-dlp fallback)
   const { audioBuffer, duration } = await downloadYouTubeAudioSmart(videoId)
 
   // Check file size (Whisper limit is 25MB)
@@ -160,57 +198,49 @@ async function transcribeWithWhisper(videoId: string): Promise<{ transcript: str
 }
 
 /**
- * Download audio from YouTube using Cobalt API
- * More reliable than yt-dlp on cloud servers (no bot detection issues)
+ * Download audio from YouTube using RapidAPI
+ * Uses YouTube Media Downloader API
  */
-async function downloadAudioWithCobalt(videoId: string): Promise<{ audioBuffer: Buffer; duration: number }> {
-  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`
+async function downloadAudioWithRapidAPI(videoId: string): Promise<{ audioBuffer: Buffer; duration: number }> {
+  const rapidApiKey = process.env.RAPIDAPI_KEY
+  if (!rapidApiKey) {
+    throw new Error('RAPIDAPI_KEY environment variable not set')
+  }
 
-  console.log('[YouTube] Downloading audio with Cobalt API...')
+  console.log('[YouTube] Downloading audio with RapidAPI...')
 
-  // Request audio download from Cobalt
-  const cobaltResponse = await fetch('https://api.cobalt.tools/api/json', {
-    method: 'POST',
+  // Request audio download from RapidAPI (using youtube-media-downloader API)
+  const response = await fetch(`https://youtube-media-downloader.p.rapidapi.com/v2/video/details?videoId=${videoId}`, {
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-    },
-    body: JSON.stringify({
-      url: videoUrl,
-      isAudioOnly: true,
-      aFormat: 'mp3',
-      filenamePattern: 'basic',
-    }),
+      'X-RapidAPI-Key': rapidApiKey,
+      'X-RapidAPI-Host': 'youtube-media-downloader.p.rapidapi.com'
+    }
   })
 
-  if (!cobaltResponse.ok) {
-    const errorText = await cobaltResponse.text()
-    console.error('[YouTube] Cobalt API error:', errorText)
-    throw new Error(`Cobalt API returned ${cobaltResponse.status}`)
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error('[YouTube] RapidAPI error:', errorText)
+    throw new Error(`RapidAPI returned ${response.status}`)
   }
 
-  const cobaltData = await cobaltResponse.json() as {
-    status: string
-    url?: string
-    text?: string
+  const data = await response.json() as {
+    audio?: Array<{ url: string; quality: string }>
+    lengthSeconds?: string
   }
 
-  if (cobaltData.status === 'error') {
-    throw new Error(cobaltData.text || 'Cobalt API error')
+  if (!data.audio || data.audio.length === 0) {
+    throw new Error('No audio streams available from RapidAPI')
   }
 
-  if (cobaltData.status === 'rate-limit') {
-    throw new Error('Cobalt API rate limited, please try again later')
-  }
+  // Get the first audio stream URL
+  const audioUrl = data.audio[0].url
+  const durationSeconds = data.lengthSeconds ? parseInt(data.lengthSeconds, 10) : 0
 
-  if (!cobaltData.url) {
-    throw new Error('Cobalt API did not return a download URL')
-  }
-
-  console.log('[YouTube] Got Cobalt download URL, fetching audio...')
+  console.log('[YouTube] Got RapidAPI download URL, fetching audio...')
 
   // Download the audio file
-  const audioResponse = await fetch(cobaltData.url)
+  const audioResponse = await fetch(audioUrl)
   if (!audioResponse.ok) {
     throw new Error(`Failed to download audio: ${audioResponse.status}`)
   }
@@ -218,11 +248,9 @@ async function downloadAudioWithCobalt(videoId: string): Promise<{ audioBuffer: 
   const audioArrayBuffer = await audioResponse.arrayBuffer()
   const audioBuffer = Buffer.from(audioArrayBuffer)
 
-  console.log(`[YouTube] Downloaded ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB of audio via Cobalt`)
+  console.log(`[YouTube] Downloaded ${(audioBuffer.length / 1024 / 1024).toFixed(2)}MB of audio via RapidAPI`)
 
-  // Cobalt doesn't return duration, estimate from file size or return 0
-  // We'll get actual duration from AssemblyAI or check separately
-  return { audioBuffer, duration: 0 }
+  return { audioBuffer, duration: durationSeconds }
 }
 
 /**
@@ -312,28 +340,30 @@ async function downloadAudioWithYtDlp(videoId: string): Promise<{ audioBuffer: B
 }
 
 /**
- * Download audio - tries Cobalt first, falls back to yt-dlp
+ * Download audio - tries RapidAPI first, falls back to yt-dlp with cookies
  */
 async function downloadYouTubeAudioSmart(videoId: string): Promise<{ audioBuffer: Buffer; duration: number }> {
-  // Try Cobalt first (works better on cloud servers)
-  try {
-    return await downloadAudioWithCobalt(videoId)
-  } catch (cobaltError) {
-    console.log('[YouTube] Cobalt failed, trying yt-dlp:', cobaltError instanceof Error ? cobaltError.message : cobaltError)
-
-    // Fall back to yt-dlp
-    return await downloadAudioWithYtDlp(videoId)
+  // Try RapidAPI first if API key is available
+  if (process.env.RAPIDAPI_KEY) {
+    try {
+      return await downloadAudioWithRapidAPI(videoId)
+    } catch (rapidApiError) {
+      console.log('[YouTube] RapidAPI failed, trying yt-dlp:', rapidApiError instanceof Error ? rapidApiError.message : rapidApiError)
+    }
   }
+
+  // Fall back to yt-dlp (with cookies if available)
+  return await downloadAudioWithYtDlp(videoId)
 }
 
 /**
  * Transcribe YouTube video with AssemblyAI (includes speaker diarization)
- * Uses Cobalt/yt-dlp to download audio, then uploads to AssemblyAI
+ * Uses RapidAPI/yt-dlp to download audio, then uploads to AssemblyAI
  */
 async function transcribeWithAssemblyAI(videoId: string): Promise<{ transcript: string; duration: number; speakers: SpeakerSegment[] }> {
   console.log('[YouTube] Transcribing with AssemblyAI (speaker diarization)...')
 
-  // Download audio using Cobalt (primary) or yt-dlp (fallback)
+  // Download audio using RapidAPI (primary) or yt-dlp (fallback)
   const { audioBuffer, duration } = await downloadYouTubeAudioSmart(videoId)
 
   // Upload to AssemblyAI and transcribe with diarization
