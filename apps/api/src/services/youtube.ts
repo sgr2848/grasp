@@ -155,41 +155,52 @@ async function fetchVideoMetadata(videoId: string): Promise<{ title: string; cha
 
 /**
  * Fetch and clean transcript from YouTube captions
+ * Tries multiple language codes if the default fails
  */
 async function fetchCaptionTranscript(videoId: string): Promise<string | null> {
-  try {
-    console.log('[YouTube] Attempting to fetch captions for video:', videoId)
-    const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId)
+  // Try multiple language options in order of preference
+  const languageCodes = ['en', 'en-US', 'en-GB', undefined] // undefined = auto-detect
 
-    if (!transcriptItems || transcriptItems.length === 0) {
-      console.log('[YouTube] No transcript items returned')
-      return null
+  for (const lang of languageCodes) {
+    try {
+      console.log(`[YouTube] Attempting to fetch captions for video: ${videoId}${lang ? ` (lang: ${lang})` : ' (auto-detect)'}`)
+
+      const transcriptItems = lang
+        ? await YoutubeTranscript.fetchTranscript(videoId, { lang })
+        : await YoutubeTranscript.fetchTranscript(videoId)
+
+      if (!transcriptItems || transcriptItems.length === 0) {
+        console.log(`[YouTube] No transcript items returned${lang ? ` for ${lang}` : ''}`)
+        continue // Try next language
+      }
+
+      console.log(`[YouTube] Found ${transcriptItems.length} caption segments`)
+
+      // Join all text segments, cleaning up spacing
+      const transcript = transcriptItems
+        .map(item => item.text)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+      if (transcript.length < 50) {
+        console.log('[YouTube] Transcript too short:', transcript.length, 'characters')
+        continue // Try next language
+      }
+
+      console.log(`[YouTube] Successfully fetched ${transcript.length} characters from captions`)
+      return transcript
+    } catch (error) {
+      console.error(`[YouTube] Caption fetch failed${lang ? ` for ${lang}` : ''}:`, {
+        videoId,
+        error: error instanceof Error ? error.message : String(error)
+      })
+      // Continue to next language option
     }
-
-    console.log(`[YouTube] Found ${transcriptItems.length} caption segments`)
-
-    // Join all text segments, cleaning up spacing
-    const transcript = transcriptItems
-      .map(item => item.text)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-
-    if (transcript.length < 50) {
-      console.log('[YouTube] Transcript too short:', transcript.length, 'characters')
-      return null
-    }
-
-    console.log(`[YouTube] Successfully fetched ${transcript.length} characters from captions`)
-    return transcript
-  } catch (error) {
-    console.error('[YouTube] Caption fetch failed:', {
-      videoId,
-      error: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined
-    })
-    return null
   }
+
+  console.log('[YouTube] All caption fetch attempts failed')
+  return null
 }
 
 /**
