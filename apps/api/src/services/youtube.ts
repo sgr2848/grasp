@@ -158,7 +158,15 @@ async function fetchVideoMetadata(videoId: string): Promise<{ title: string; cha
  */
 async function fetchCaptionTranscript(videoId: string): Promise<string | null> {
   try {
+    console.log('[YouTube] Attempting to fetch captions for video:', videoId)
     const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId)
+
+    if (!transcriptItems || transcriptItems.length === 0) {
+      console.log('[YouTube] No transcript items returned')
+      return null
+    }
+
+    console.log(`[YouTube] Found ${transcriptItems.length} caption segments`)
 
     // Join all text segments, cleaning up spacing
     const transcript = transcriptItems
@@ -168,12 +176,18 @@ async function fetchCaptionTranscript(videoId: string): Promise<string | null> {
       .trim()
 
     if (transcript.length < 50) {
+      console.log('[YouTube] Transcript too short:', transcript.length, 'characters')
       return null
     }
 
+    console.log(`[YouTube] Successfully fetched ${transcript.length} characters from captions`)
     return transcript
   } catch (error) {
-    console.log('[YouTube] No captions available, will try Whisper:', error instanceof Error ? error.message : error)
+    console.error('[YouTube] Caption fetch failed:', {
+      videoId,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    })
     return null
   }
 }
